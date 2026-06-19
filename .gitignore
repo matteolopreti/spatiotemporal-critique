@@ -1,0 +1,10 @@
+# machine-specific config written by setup.sh
+.env
+# cloud creds (CRITIC_API_KEY etc.) — never commit
+cloud.env
+# per-run critic log (pin+log)
+critique.log
+# macOS
+.DS_Store
+# private project notes (Claude meta) — not part of the published framework
+CLAUDE.md
