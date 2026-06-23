@@ -15,8 +15,8 @@ is usually weaker than Claude, so:
 Never let the external critique override better judgment. The discerning-solver
 mandate applies: the synthesizer may reject it where it's wrong.
 
-What it does NOT do: corroborate intent. Only the user knows their goal; this
-can generate alternative readings (severe tests) but cannot confirm meaning.
+On intent: it may SURFACE objective-level doubt (alternative readings, severe
+tests) for the user to adjudicate, but cannot unilaterally confirm meaning.
 
 Usage:
     python3 external_critic.py ARTIFACT_FILE \

@@ -1,16 +1,17 @@
 ---
 name: spatiotemporal-critique
-description: Balanced, intent-anchored review protocol that replaces the one-sided "critic persona" — it preserves what works, steelmans the current choices, sizes itself to the task, and can pull in a genuinely independent external model (local Ollama, or a cloud OpenAI-compatible endpoint) for uncorrelated errors. Use this whenever the user wants a real review, critique, or "is this good as-is?" check on work they have made — code, writing, a design, a plan — especially before finalizing or shipping, when they want both what is wrong AND what is right, want a second or independent opinion, or mention "balanced review", "preserve-first", a "red team", or an "external critic". Prefer it over ad-hoc nitpicking for any finished or near-finished artifact; skip it only for trivial, easily-reversible edits.
+description: Balanced, intent-anchored review protocol that replaces the lone critic — preserves what works, steelmans choices, sizes to the task, and can add an independent external model (Ollama/cloud) for uncorrelated errors. Use when the user wants a real review, critique, balanced review, preserve-first review, second or independent opinion, red team, external critic, or an "is this good as-is?" / "ready to ship?" check on finished work — code, writing, design, or plan — before finalizing or shipping. Skip only trivial, easily-reversible edits.
 ---
 
 # Spatiotemporal Critique
 
-A review protocol that fixes the lone-critic failure mode — it manufactures problems, breaks good parts, and optimizes toward a misread goal. Apply it when reviewing real work. The full spec (schematic, dials, every stage, the change log) lives in **[README.md](README.md)** — read it when you need depth. This file is the operating procedure.
+A review protocol that fixes the lone-critic failure mode — it manufactures problems, breaks good parts, and optimizes toward a misread goal. Apply it when reviewing real work. The full spec (the dials, every stage, the failure lattice, the change log) lives in **[README.md](README.md)** — read it when you need depth. This file is the operating procedure.
 
 ## Always on — the four mandates
+They bind at two layers, not inside each critic: **1–2 are synthesis-layer** (the reducer balances the panel), **3–4 are reviser-layer**. Each critic is one source's view — even the external seat's preserve/issues/verdict is raw input the synthesis re-balances; balance is the panel's job.
 1. **Preserve-first.** List what is working and must survive the edit *before* listing defects.
 2. **Steelman before strike.** Argue why each current choice might already be right; if it survives, drop the critique.
-3. **Discerning solver.** You may reject a critique you judge wrong — blind compliance is how good parts break. *(This governs any external critic too.)*
+3. **Discerning solver.** You may reject a critique you judge wrong — blind compliance is how good parts break. *(This governs how the reviser treats any external critic too.)*
 4. **Net-improvement gate.** Keep a change only if it beats the prior version on the rubric — and periodically re-check that the rubric is still the right target. "Leave it alone" is a valid outcome.
 
 ## First, size the task
@@ -18,8 +19,8 @@ A review protocol that fixes the lone-critic failure mode — it manufactures pr
 
 ## The loop
 **Awake — converge:**
-1. **Origin — get the target right.** Externalize the intent as a falsifiable spec the user can correct (not a latent "understanding"). Test it with a *consequential* restatement and a wrong-but-plausible alternative reading — severe tests, not confirmation. List the assumptions you made where the spec was silent, each with the consequence if wrong.
-2. **Spatial — coverage now.** Run diverse, *independent* critics; dedupe and rank by leverage (severity × confidence × blast-radius); surface genuine disagreement as *contested* rather than auto-resolving; emit the preserve-list.
+1. **Origin — get the target right.** Externalize the intent as a falsifiable spec the user can correct (not a latent "understanding"). Test it with a *consequential* restatement and a wrong-but-plausible alternative reading — severe tests, not confirmation. List the assumptions you made where the spec was silent, each with the consequence if wrong. Surface any divergence between literal compliance and the deeper goal for the user to adjudicate.
+2. **Spatial — coverage now.** Run diverse critics independently, each a single contribution (balancing them is the panel's job, not each critic's); then **synthesize in a separate fresh-context pass** that consumes the critiques as inputs — there the synthesis-layer mandates (preserve-first, steelman) dedupe, rank by leverage (severity × confidence × blast-radius), surface genuine disagreement as *contested* rather than auto-resolving, and emit the preserve-list. Add a critic only when it buys a distinct failure surface — diversity of stance, not headcount.
 3. **Temporal — trajectory.** Backward: localize any regression to the exact edit. Forward (pre-mortem): "this shipped and failed — explain why," treated as low-confidence hypotheses. Anchor on the best-corroborated intent so far, not the last draft (drift) and not the original goal by default (intent can legitimately evolve).
 
 Repeat the awake loop until a pass yields nothing material.
@@ -30,7 +31,7 @@ Repeat the awake loop until a pass yields nothing material.
 
 Alternate wake ⇄ sleep until stable under both: nothing changes *and* nothing better is found.
 
-## Quick version — paste-and-go
+## Quick preset (paste)
 For a fast pass, run these six and stop:
 1. What's working here that must be preserved?
 2. Steelman my current choices — where might they already be right?
@@ -38,6 +39,17 @@ For a fast pass, run these six and stop:
 4. List the assumptions you're making where I left things unspecified, and what breaks if each is wrong.
 5. The 3 highest-leverage issues only, each with a concrete fix. *(Taste work: the 3 places it reads as generic, with a sharper alternative each.)*
 6. Verdict: is this genuinely better than leaving it as is? If not, say so.
+
+## Standard preset (paste)
+A panel + one backward check, when the Quick six aren't enough. (For the heavier *Full* preset, see the presets line in [README.md](README.md).)
+1. Preserve-list: what's working that must survive the edit?
+2. Steelman each current choice; drop any critique the choice survives.
+3. State my actual goal as a falsifiable claim I can confirm or correct, and stress it against one wrong-but-plausible alternative reading. *(Skip if my goal is already formal.)*
+4. Assumptions you made where I left things unspecified, each with what breaks if wrong.
+5. Review from ~3 in-context angles (domain expert · skeptical generalist · end user) — same-model personas, *not* true independence — then merge them and mark genuine disagreement as contested rather than resolving it.
+6. Highest-leverage issues, ranked by leverage (severity × confidence × blast-radius), each with a concrete fix. *(Taste: where it reads generic, with a sharper alternative.)*
+7. Backward check *(only if there's a real edit history)*: which logged change introduced each problem? Localize it — don't invent a history.
+8. Verdict: genuinely better than leaving it as is — and is there a smaller change that captures most of the gain?
 
 ## Independent external critic — optional
 Critics run by one model in one context only *approximate* independence (same weights, correlated errors). For a genuinely uncorrelated view, route the artifact to a **different-lineage** model via the bundled helper:
@@ -48,4 +60,4 @@ Critics run by one model in one context only *approximate* independence (same we
 python3 external_critic.py path/to/work --brief "focus here" --mode correctness   # or --mode taste
 ```
 
-Weight it by **independence, not authority**: agreement with your own review is strong corroboration; a lone external claim is a *contested* point to surface, not a verdict (mandate 3 governs — reject it where it's wrong). It strengthens the *perspective* and *overfitting* axes, **not** the *intent* axis — only the user knows their goal. Model selection, the spec-aware picker, pin-and-log, and cloud setup are documented in [README.md](README.md).
+Weight it by **independence, not authority**: agreement with your own review is strong corroboration; a lone external claim is a *contested* point to surface, not a verdict (mandate 3 governs — reject it where it's wrong). It strengthens the *perspective* and *overfitting* axes, and may *surface* intent-level doubt for you to adjudicate — but cannot unilaterally confirm your goal. Model selection, the spec-aware picker, pin-and-log, and cloud setup are documented in [EXTERNAL_CRITIC.md](EXTERNAL_CRITIC.md).

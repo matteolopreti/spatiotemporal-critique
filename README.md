@@ -1,78 +1,28 @@
-# Spatiotemporal Critique — v3.4
+# Spatiotemporal Critique — balanced, preserve-first code & writing review, with an independent external-model critic
 
 A review protocol that replaces the lone "critic persona." The lone critic only hunts for flaws, misses what you actually wanted, and breaks things that were already fine. This fixes that. It runs a **balanced, intent-anchored** review in two modes — *awake* (converge) and *asleep* (diverge) — sizes itself to the task, doing nothing for trivial work, and can pull in a **genuinely external viewpoint** (a different model, on demand) for real independence.
 
-The lone critic fails five ways; each has one dedicated fix, and that mapping is the framework:
+The lone critic fails in several overlapping ways; the framework answers them **many-to-many** — one failure can need several stages, and one stage can answer several failures:
 
 - Manufactures problems, breaks good parts (Reviewer-2 bias) → **the four mandates**
-- Optimizes toward a target that's wrong → **the Origin layer**
+- Wrong target — *mis-set*, *drifted*, or *stale* → **Origin** + the **Temporal anchor** (catches drift) + the **second-order net-improvement gate** (re-tests a stale rubric)
 - Blind spots in the artifact as it stands → **the Spatial axis**
-- Errors that live in the *history* of edits, not the draft → **the Temporal axis**
-- Saturation, and overfitting to its own critics → **the Sleep regime**
+- Errors that live in the *history* of edits, not the draft → **the Temporal axis** (backward bisection — same axis, a different job)
+- Saturation, overfitting to its own critics → **the Sleep regime**
 
 ---
 
-## Schematic
+## Five-minute start
 
-```
-  ALWAYS ON · preserve · steelman · discern · improvement-gate
-  ───────────────────────────────────────────────────────────
+- **Trivial, reversible edit?** Skip everything — the protocol declines itself.
+- **Shipping real work (code, writing, a design, a plan)?** Paste the six [Quick-preset](SKILL.md#quick-preset-paste) questions and stop.
+- **Want a second opinion that isn't just you again?** Turn on the [external reviewer](#optional-external-reviewer-real-independence) — a different-lineage model joins the panel.
 
-                       TASK
-                        │
-                  ┌─────┴─────┐
-                  │ Worth it? │ ─▶ trivial → just do it (skip it all)
-                  └─────┬─────┘
-                        │
-             ╭──────────┴──────────╮
-             │  CONFIGURE the task  │
-             │  intent   given│ambig│
-             │  verifier   yes│no   │
-             │  ontology  corr│taste│
-             │  control  human│auto │
-             │  external   off│on   │ ◀ optional (Ollama)
-             ╰──────────┬──────────╯
-                        │
-   ┌──────────── AWAKE · converge ────────────┐
-   │                                          │
-   │  ① ORIGIN — get the target right         │
-   │     externalize intent · severe tests    │
-   │     (not confirmation) · ledger          │
-   │                    │                     │
-   │  ② SPATIAL — coverage now                │
-   │     independent critics ─▶ synthesis     │
-   │     + preserve-list  (no lone nitpicker) │
-   │     + optional EXTERNAL model            │ ◀ real independence
-   │                    │                     │
-   │  ③ TEMPORAL — trajectory integrity       │
-   │     backward: which edit broke it        │
-   │     forward: pre-mortem (hypotheses)     │
-   │     anchor on best-corroborated intent   │
-   │     (evolution ok · drift caught)        │
-   │                                          │
-   │     ↻ repeat until no material gain      │
-   └─────────────────────┬────────────────────┘
-                at the peak│
-   ┌──────────── ASLEEP · diverge ────────────┐
-   │                                          │
-   │  ④ CONSOLIDATE                           │
-   │     prune to the core · extract gist ·   │
-   │     carry lessons across tasks           │
-   │                    │                     │
-   │  ⑤ PERTURB                               │
-   │     near ▸ best nearby variant           │
-   │     far  ▸ invert · cross-domain         │
-   │     (find brittleness · recover missed)  │
-   └─────────────────────┬────────────────────┘
-                         │
-      ↻ wake ⇄ sleep until STABLE under both
-        (nothing changes & nothing better)
-                         ▼
-                    BETTER WORK
+**What it changes — one example.** *"Review my retry helper before I merge."*
+- *Lone critic:* "No jitter, magic number `5`, use exponential backoff — rewrote it for you." Invents a requirement, rewrites working code, never asks the goal.
+- *Spatiotemporal:* keeps the capped-retry + logging that handle the real failure mode; steelmans the fixed `5` for a fail-fast CLI; asks "bounded latency, not max reliability — confirm?"; flags the one real bug (unbounded sleep on the final attempt); verdict — one fix, ship the rest.
 
-  SCALE threads through:  small → local·often·cheap
-  big (direction) → global·rare·deep   [blast-radius ≈ time]
-```
+---
 
 ## How it works (plain walkthrough)
 
@@ -82,10 +32,12 @@ Read top to bottom. The four mandates sit above everything, always on. The first
 
 ## Four mandates (always on)
 
-1. **Preserve-first.** List what's working and must survive the edit *before* listing defects.
-2. **Steelman before strike.** Argue why each current choice might already be right; if it survives, drop the critique.
-3. **Discerning solver.** The reviser may reject a critique it judges wrong — blind compliance is how good parts break. *(This governs the external critic too.)*
-4. **Net-improvement gate, two orders.** Keep a revision only if it beats the prior version on the rubric — *and* periodically re-test whether the rubric is still the right target. Allowed to exit with "leave it alone."
+They bind at two layers — not inside each critic. Each critic is **one source's view**; even the external seat's preserve/issues/verdict is *raw input the synthesis re-balances*, never the authoritative review. **Balance is a property of the panel and its synthesis pass, not of any one critic.**
+
+1. **Preserve-first** *(synthesis layer)*. List what's working and must survive the edit *before* listing defects.
+2. **Steelman before strike** *(synthesis layer)*. Argue why each current choice might already be right; if it survives, drop the critique.
+3. **Discerning solver** *(reviser layer)*. The reviser may reject a critique it judges wrong — blind compliance is how good parts break. *(This is how the reviser treats the external critic too.)*
+4. **Net-improvement gate, two orders** *(reviser layer)*. Keep a revision only if it beats the prior version on the rubric — *and* periodically re-test whether the rubric is still the right target. Allowed to exit with "leave it alone."
 
 ---
 
@@ -93,25 +45,17 @@ Read top to bottom. The four mandates sit above everything, always on. The first
 
 **Floor gate.** Trivial, low-stakes, easily-reversible work gets *no* framework — just do it. The framework must be willing to decline itself.
 
-**Dials** (a few orienting questions, not a rigid taxonomy):
+**Dials** — read the task's shape; each setting sets how much of each stage runs:
 
-- **Intent — given or ambiguous?** Formal spec → Origin runs near-empty. Ambiguous → run Origin fully.
-- **Verifier — present or absent?** Objective check exists → the temporal/executable axis dominates, critique is cheap. Absent → critique and corroboration carry the load.
-- **Ontology — correctness or taste?** Correctness → the "issues / severity" vocabulary applies. Taste → report *what works and where it's generic*, not "defects."
-- **Supervision — human or autonomous?** Human → Origin's severe tests go to the user. Autonomous → corroborate against held-out examples; escalate only high-blast-radius divergences.
-- **External reviewer — off or on?** *(optional; see below)* On → a different model via Ollama joins the Spatial panel as a genuinely independent critic. Sensible at the Full tier or for code review; not for trivial tasks.
+| Dial | Setting → which stages run, at what depth |
+| --- | --- |
+| **Intent** | given → Origin near-skip · ambiguous → run Origin fully (externalize + severe tests) |
+| **Verifier** | present → the Temporal/executable axis dominates, critique is cheap · absent → Spatial critique + corroboration carry it |
+| **Ontology** | correctness → the issues × severity vocabulary · taste → "what works / where it reads generic", not "defects" |
+| **Supervision** | human → Origin's severe tests go to the user · autonomous → corroborate vs held-out examples, escalate only high-blast-radius |
+| **External** | off → in-session panel only · on → a different-lineage model joins the Spatial panel (Full preset / code review) |
 
-**Presets:** *Quick* (one paste, one context) · *Standard* (panel + one backward check) · *Full* (separate-call critics, full temporal, a sleep pass, external reviewer on).
-
-### Quick preset (paste)
-
-> Before I finalize this, run a balanced review:
-> 1. What's working here that must be preserved?
-> 2. Steelman my current choices — where might they already be right?
-> 3. State what you think I'm actually trying to achieve, as a specific consequential claim I can confirm or correct. *(Skip if my goal is already formal.)*
-> 4. List the assumptions you're making where I left things unspecified, and what breaks if each is wrong.
-> 5. The 3 highest-leverage issues only, each with a concrete fix. *(Taste work: the 3 places it reads as generic, with a sharper alternative each.)*
-> 6. Verdict: is this genuinely better than leaving it as is? If not, say so.
+**Presets:** *Quick* (one paste, one context) · *Standard* (panel + one backward check) · *Full* (separate-call critics, full temporal, a sleep pass, external reviewer on). The paste prompts for **Quick** and **Standard** live in **[SKILL.md](SKILL.md)** (the operating procedure) — paste from there.
 
 ---
 
@@ -125,12 +69,12 @@ A perfectly critiqued, regression-free artifact built toward a misread intent is
 - **Severe tests, not confirmation.** Test with things that fail loudly when wrong: a *consequential* restatement that forces a boundary choice; a wrong-but-plausible alternative reading; and, when intent is set before generation, a *small concrete sample*.
 - **Assumptions ledger, not a confidence score.** List every point where the spec was silent and you chose anyway, each with the consequence if wrong.
 - **Triage by blast-radius.** Corroborate expensive-to-reverse decisions *before* building on them. When autonomous, this is the escalation filter.
-- **Doubt the spec, not just your reading of it.** When literal compliance would betray the deeper goal, surface the divergence — never silently obey *or* silently override.
+- **Doubt the spec, not just your reading of it.** When literal compliance would betray the deeper goal, *surface* the divergence for the user to adjudicate — never silently obey, silently override, *or* silently confirm. This surfacing duty is first-class and governs every critic, the external model included.
 
 ### ② Spatial — coverage at an instant (map-reduce)
 
-- **Map:** diverse critics run *independently* on the original. Independence has a quality ladder by **critic source**: same-context personas (degraded — they anchor on each other) < separate calls to the same model (better) < **a different model** (strongest — uncorrelated errors, an out-of-distribution check). Mix stance — domain-specific and generalist. Coverage comes from diversity of stance, not headcount.
-- **Reduce:** dedupe, rank by leverage (severity×confidence *and* blast radius), surface genuine disagreement as *contested* rather than auto-resolving, emit the preserve-list. With the external reviewer on, **cross-model agreement is strong corroboration and cross-model disagreement is a first-class contested point** — but the external critique is *input, not authority* (mandate 3 governs it).
+- **Map:** diverse critics run *independently* on the original, **each a single contribution** — its raw output is one viewpoint, not a balanced verdict, so balancing them is the panel's job, not the critic's. Independence has a quality ladder by **critic source**: same-context personas (degraded — they anchor on each other) < separate calls to the same model (better) < **a different model** — the **external reviewer**, run via `external_critic.py` (strongest — uncorrelated errors, an out-of-distribution check). Mix stance — domain-specific and generalist. Add a critic only when it buys a distinct failure surface: **coverage comes from diversity of stance, not headcount** (no fixed number).
+- **Reduce — a separate, fresh-context synthesis pass.** Run synthesis in a *fresh context* that consumes the critiques as external inputs — not the context that produced them — so the synthesizer can't anchor on its own map (the one thing a "council" genuinely adds). Here the *synthesis-layer* mandates do their work (preserve-first, steelman): dedupe, rank by leverage (severity×confidence *and* blast radius), surface genuine disagreement as *contested* rather than auto-resolving, emit the preserve-list. With the external reviewer on, **cross-model agreement is strong corroboration and cross-model disagreement is a first-class contested point** — but the external critique is *input, not authority* (mandate 3 governs it).
 
 ### ③ Temporal — trajectory integrity across time
 
@@ -173,53 +117,13 @@ Match the review to the decision's scale: small calls get **local, frequent, che
 
 ## Optional: external reviewer (real independence)
 
-Run by one model in one session, the framework's "independent critics" only *approximate* independence — same weights, same context, correlated errors. The fix is a **genuinely external viewpoint**: a different-lineage model run locally via [Ollama](https://ollama.com), joining the Spatial panel on demand.
-
-- **What it buys:** uncorrelated errors and an out-of-distribution check. Agreement with the primary model is strong corroboration; disagreement is a contested point to surface.
-- **Independence, not authority.** A local open model is usually weaker. Weight agreement; treat lone external claims skeptically. Mandate 3 (discerning solver) governs — reject it where it's wrong.
-- **Scope.** It strengthens the *perspective* and *overfitting* axes, **not** the *intent* axis — only the user knows their goal. It can generate alternative readings (severe tests) but cannot confirm meaning.
-- **Where it runs.** Anywhere the helper can execute — a local Ollama on `localhost:11434`, or outbound HTTPS to a cloud endpoint (`CRITIC_BASE_URL`). It needs a tool-executing context (agentic/CLI), not a hosted chat with no shell.
-
-Helper: `external_critic.py` (dependency-free; returns PRESERVE / ISSUES-or-GENERIC / VERDICT, already shaped to feed synthesis).
-
-### Choosing the model
-
-The model is **config-first** (`CRITIC_MODEL`); never hardcode it — the in-script default is only a fallback. Pick a lineage *different from your primary model* (that is what buys the independence), and check `ollama.com/library` for the current tag, since rankings shift monthly:
-
-- **Default / broadly runnable:** `qwen3:8b` — the in-script *floor* (a fallback only); `setup.sh` auto-picks the strongest installed model that safely fits your RAM (see the changelog for the current benchmarked pick).
-- **Stronger general:** `qwen3:14b` / `qwen3:32b`, or a current GLM or DeepSeek tag (verify on `ollama.com/library`).
-- **Code review:** a Qwen3-Coder or DeepSeek-Coder tag.
-
-"Auto-update to the newest best model" can't be fully automated — *best* is a human judgment that changes monthly, and there's no clean registry query for it. The achievable design is config-first + a small **ranked preference list** (best first) the setup tries in order — reusing the strongest model you already have, else pulling a light default — refreshed by hand. And for reproducible work (scientific or code), **pin and log** the critic model used for a given review rather than silently auto-bumping mid-run — auto-update to stay current; pin+log (model, seed, params) so a review is auditable and reproducible on the same build (tags are mutable — re-pin after a re-pull). This is the same logged-trace discipline the Temporal axis and the assumptions ledger already use: record which critic produced the critique.
-
-### Setup & test
-
-```bash
-# one-time, guided setup (installs nothing unless you pass --install)
-chmod +x setup.sh external_critic.py
-./setup.sh
-
-# run it on a real file
-python3 external_critic.py path/to/draft.md --brief "focus here" --mode correctness
-
-# for code review, point at a current code model of a different lineage
-# (verify the tag on ollama.com/library — these move monthly):
-CRITIC_MODEL=qwen3-coder ./setup.sh
-
-# or route to a hosted model (the artifact leaves your machine):
-export CRITIC_BASE_URL=https://api.z.ai/api/paas/v4 CRITIC_API_KEY=... CRITIC_MODEL=glm-5.2
-python3 external_critic.py path/to/draft.md --mode correctness
-```
-
-`setup.sh` writes its pick to `.env` for the helper and asks before any pull; `external_critic.py` logs the model, seed and params used on every run (`critique.log`, next to the helper; `--no-log` to skip) so a review is auditable.
-
-**Local or cloud.** By default the critic is a *local* Ollama model — private, free, no keys. `setup.sh` reads your RAM and reuses the strongest model that comfortably fits (it won't auto-pick one too big for your machine). If nothing local is strong enough, set `CRITIC_BASE_URL` to an OpenAI-compatible endpoint (base URL including the version path, e.g. `.../v1`) plus `CRITIC_API_KEY`, and the same helper routes there instead — the cost is that the artifact leaves your machine. Independence comes from a *different lineage*, not from locality; local is just the private default.
-
-For a **published skill**, automate *detection and guidance*, not silent installation: when the user turns the reviewer on, run the preflight; if Ollama isn't ready, report the one command (`./setup.sh`) and the approximate download size, and leave installing/pulling to explicit consent. Never silently install software or pull multi-GB models on a user's machine.
+One model in one session only *approximates* independence (same weights, correlated errors); for a genuinely uncorrelated view, route the artifact to a **different-lineage** model — local via [Ollama](https://ollama.com) or a cloud OpenAI-compatible endpoint — with the bundled `external_critic.py`, weighting it by *independence, not authority* (mandate 3 governs: reject it where it's wrong). It can also *surface* intent-level doubt for you to adjudicate, but cannot settle your goal. Full setup, model selection, the spec-aware picker, pin-and-log, and cloud routing live in **[EXTERNAL_CRITIC.md](EXTERNAL_CRITIC.md)**.
 
 ---
 
 ## Change log
+
+**Self-gated.** From v4.0 on, every version bump must first pass this protocol run on its own spec (preserve-list · three highest-leverage issues · net-improvement gate), and the diff must be net lines-removed ≥ lines-added — the standing defense against bloat-on-extension.
 
 - **v1** — four mandates + tiers + temporal passes. Backward pass caught a regression (fixing "too heavy" by adding scaffolding made it heavier).
 - **v2** — added Origin and Sleep. The *same* regression recurred; consolidation named bloat-on-extension a **standing** property, making the prune pass permanent.
@@ -228,3 +132,4 @@ For a **published skill**, automate *detection and guidance*, not silent install
 - **v3.2** — documented the **optional external reviewer** (Ollama) as the realization of the standing independence caveat: folded into Configure (opt-in dial) and Spatial (critic-source ladder; cross-model agreement/disagreement as synthesis signal), with `external_critic.py`, `setup.sh`, and guidance for safe auto-configuration. No core architecture change — stable.
 - **v3.3** — model guidance brought current: default bumped off the older qwen2.5 generation to `qwen3:8b`, current candidates listed (Qwen3.x / GLM-4.7 / DeepSeek V3.2; a code-specialized tag for code), and the **config-first / ranked-list / pin-and-log-for-reproducibility** policy stated (auto-update can't be fully automated; pin+log keeps a review auditable). Documentation and defaults set here; the ranked-list / installed-first selection and per-run pin+log are now implemented in `setup.sh` / `external_critic.py` (config-first, with `.env` carrying setup's pick to the helper).
 - **v3.4** — the external reviewer can now route to a **hosted OpenAI-compatible endpoint** (`CRITIC_BASE_URL` + `CRITIC_API_KEY`; default stays local Ollama, fully env-driven so it never persists off-machine routing), and `setup.sh` gained **spec-aware selection**: it reads RAM and auto-picks the strongest model that *safely* fits (skipping ones that would spill to CPU). A local benchmark (planted-bug code review) set the recommended default for a ~24 GB machine to **`gpt-oss:20b`** (4/5 bugs, fully GPU-resident, no hallucinations); cloud (e.g. GLM-5.2) stays the escalation for the subtlest cases. Stdlib-only and config-first preserved; no core architecture change.
+- **v4.0** — first **self-gated** release (the protocol reviewed its own upgrade). Honesty + de-bloat + adoption pass: replaced the one-to-one failures↔fixes bijection with an honest **many-to-many lattice**; clarified that any reviewer — the external critic included — may *surface* intent-level doubt for the user to adjudicate, never a unilateral override or silent confirm; named the **fresh-context synthesis** pass and the external-reviewer seat; clarified that the four mandates bind at the **synthesis/reviser layers** (each critic is one source's view); split the external-reviewer setup into **EXTERNAL_CRITIC.md** and cut the ASCII schematic; added a five-minute start, a searchable heading, a dials decision-table and a **Standard preset**. Net lines removed ≥ added. *Deferred to v4.1: a confidence-term audit and an explicit abstention channel for critics.*

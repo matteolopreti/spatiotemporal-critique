@@ -8,3 +8,5 @@ critique.log
 .DS_Store
 # private project notes (Claude meta) — not part of the published framework
 CLAUDE.md
+# process / planning artifacts (binding inputs, ANALYSIS / SELF_REVIEW / VERIFICATION / PROJECT_LOG) — not part of the published framework
+docs/
