@@ -1,4 +1,4 @@
-# Spatiotemporal Critique — balanced, preserve-first code & writing review, with an independent external-model critic
+# Spatiotemporal Critique
 
 A review protocol that replaces the lone "critic persona." The lone critic only hunts for flaws, misses what you actually wanted, and breaks things that were already fine. This fixes that. It runs a **balanced, intent-anchored** review in two modes — *awake* (converge) and *asleep* (diverge) — sizes itself to the task, doing nothing for trivial work, and can pull in a **genuinely external viewpoint** (a different model, on demand) for real independence.
 
