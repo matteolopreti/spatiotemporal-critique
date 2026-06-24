@@ -1,5 +1,10 @@
 # Spatiotemporal Critique
 
+[![Release](https://img.shields.io/github/v/release/matteolopreti/spatiotemporal-critique)](https://github.com/matteolopreti/spatiotemporal-critique/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Claude skill](https://img.shields.io/badge/Claude-skill-d97757)](SKILL.md)
+[![External critic: Ollama or cloud](https://img.shields.io/badge/external%20critic-Ollama%20%7C%20cloud-555)](EXTERNAL_CRITIC.md)
+
 A review protocol that replaces the lone "critic persona." The lone critic only hunts for flaws, misses what you actually wanted, and breaks things that were already fine. This fixes that. It runs a **balanced, intent-anchored** review in two modes — *awake* (converge) and *asleep* (diverge) — sizes itself to the task, doing nothing for trivial work, and can pull in a **genuinely external viewpoint** (a different model, on demand) for real independence.
 
 The lone critic fails in several overlapping ways; the framework answers them **many-to-many** — one failure can need several stages, and one stage can answer several failures:
