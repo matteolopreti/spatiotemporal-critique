@@ -22,8 +22,9 @@ Usage:
     python3 external_critic.py ARTIFACT_FILE \
         [--brief "what to focus on"] \
         [--intent "the externalized intent spec"] \
-        [--mode correctness|taste]
-    # ARTIFACT_FILE of "-" reads from stdin.
+        [--mode correctness|taste] \
+        [--depth brief|full]
+    # ARTIFACT_FILE of "-" reads from stdin; --depth full adds a rationale per finding.
 
 Config (env / .env — a set, non-empty env var always wins):
     OLLAMA_HOST    default http://localhost:11434
@@ -49,6 +50,7 @@ import datetime
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -83,8 +85,11 @@ HOST = _cfg("OLLAMA_HOST", "http://localhost:11434")
 MODEL = _cfg("CRITIC_MODEL", "qwen3:8b")
 LOG_PATH = _cfg("CRITIC_LOG", os.path.join(_HERE, "critique.log"))
 
-# Fixed seed → a pinned tag yields a reproducible critique on the same model build.
+# Ollama native: seed honored under "options" → a pinned tag gives a reproducible critique.
 OPTIONS = {"temperature": 0.4, "seed": 0}
+# OpenAI-compat shims reject UNKNOWN fields (Gemini 400s on `seed`), so the cloud path
+# sends only the universal knob; cloud reproducibility is pin+log, not a bitwise seed.
+OPENAI_OPTIONS = {"temperature": OPTIONS["temperature"]}
 
 # Cloud opt-in: set CRITIC_BASE_URL to an OpenAI-compatible endpoint (a hosted,
 # different-lineage model) to send the critique off-machine. Empty = local Ollama
@@ -102,6 +107,15 @@ SYSTEM = (
     "For taste/creative work, replace ISSUES with GENERIC — the places it "
     "reads as generic or safe, each with a sharper alternative.\n"
     "End with one line: VERDICT — is this genuinely good as-is, or not, and why."
+)
+
+# --depth full: opt-in size dial (mirrors Quick/Standard sizing) — rationale on the
+# same contract, structured, not padding.
+DEPTH_FULL = (
+    "\nDEPTH=full: for each ISSUE/GENERIC item, add a 'why:' line — one sentence "
+    "on why it matters or how you'd know it's real. Just before VERDICT, add a "
+    "short REASONING block (2-4 sentences) weighing the main trade-off. Keep it "
+    "tight — rationale, not padding."
 )
 
 
@@ -125,7 +139,7 @@ def call_model(system, prompt):
     headers = {"Content-Type": "application/json"}
     if BASE_URL:  # OpenAI-compatible endpoint (cloud, or any local /v1 server)
         url = f"{BASE_URL.rstrip('/')}/chat/completions"
-        body = {"model": MODEL, "messages": messages, "stream": False, **OPTIONS}
+        body = {"model": MODEL, "messages": messages, "stream": False, **OPENAI_OPTIONS}
         if API_KEY:
             headers["Authorization"] = f"Bearer {API_KEY}"
         path = ("choices", 0, "message", "content")
@@ -134,20 +148,26 @@ def call_model(system, prompt):
         body = {"model": MODEL, "messages": messages, "stream": False, "options": OPTIONS}
         path = ("message", "content")
     req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers)
-    with urllib.request.urlopen(req, timeout=300) as resp:
-        data = json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:  # surface the endpoint's reason (e.g. a rejected field)
+        detail = e.read().decode("utf-8", "replace").strip()[:500]
+        raise RuntimeError(f"HTTP {e.code} from {url} — {detail}") from None
     for k in path:
         data = data[k]
     return data
 
 
-def log_run(artifact, mode, brief, intent):
+def log_run(artifact, mode, depth, brief, intent):
     """Pin-and-log: record which model (and sampling params) produced which
     critique — the logged-trace discipline the Temporal axis and ledger use.
+    depth is logged too: it changes the prompt, so it's part of reproducibility.
     Returns True if the record was written."""
     ts = datetime.datetime.now().isoformat(timespec="seconds")
-    rec = (f"{ts}\tmodel={MODEL}\tendpoint={ENDPOINT}\tmode={mode}"
-           f"\ttemp={OPTIONS['temperature']}\tseed={OPTIONS['seed']}"
+    seed = "na" if BASE_URL else OPTIONS["seed"]  # seed isn't sent on the cloud path
+    rec = (f"{ts}\tmodel={MODEL}\tendpoint={ENDPOINT}\tmode={mode}\tdepth={depth}"
+           f"\ttemp={OPTIONS['temperature']}\tseed={seed}"
            f"\tartifact={artifact}\tbrief={brief!r}\tintent={intent!r}\n")
     try:
         with open(LOG_PATH, "a", encoding="utf-8") as f:
@@ -166,6 +186,8 @@ def main():
     ap.add_argument("--intent", default="", help="the externalized intent spec")
     ap.add_argument("--mode", default="correctness",
                     choices=["correctness", "taste"])
+    ap.add_argument("--depth", default="brief", choices=["brief", "full"],
+                    help="brief (default) = terse contract; full = +rationale per finding")
     ap.add_argument("--no-log", action="store_true",
                     help="don't record this run in the critique log")
     args = ap.parse_args()
@@ -176,8 +198,9 @@ def main():
         with open(args.artifact, encoding="utf-8") as f:
             text = f.read()
 
+    system = SYSTEM + (DEPTH_FULL if args.depth == "full" else "")
     try:
-        out = call_model(SYSTEM, build_prompt(text, args.brief, args.intent, args.mode))
+        out = call_model(system, build_prompt(text, args.brief, args.intent, args.mode))
     except Exception as e:  # noqa: BLE001 — surface any failure plainly
         if BASE_URL:
             sys.exit(f"external critic unavailable ({e}). Check CRITIC_BASE_URL "
@@ -191,7 +214,7 @@ def main():
 
     if not args.no_log and log_run(
             "<stdin>" if args.artifact == "-" else args.artifact,
-            args.mode, args.brief, args.intent):
+            args.mode, args.depth, args.brief, args.intent):
         print(f"(logged: {MODEL} -> {LOG_PATH})", file=sys.stderr)
 
 
