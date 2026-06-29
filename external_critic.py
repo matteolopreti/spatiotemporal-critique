@@ -353,7 +353,9 @@ def do_probe(cost_override, artifact_path="", expect=""):
                 open(artifact_path, encoding="utf-8").read()
         except OSError as e:
             sys.exit(f"cannot read probe artifact {artifact_path}: {e}")
-        toks = tuple(t.strip().lower().replace(" ", "") for t in expect.split(",") if t.strip())
+        # lowercase but PRESERVE spaces — grade_probe matches a space-preserved
+        # answer, so a multi-word --expect ("race condition") must keep its space.
+        toks = tuple(t.strip().lower() for t in expect.split(",") if t.strip())
         if not toks:
             sys.exit('--probe FILE needs --expect "tok1,tok2": the word(s) a genuine '
                      "critic must say when it finds the flaw you planted in FILE.")
