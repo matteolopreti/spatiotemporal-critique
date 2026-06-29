@@ -27,15 +27,15 @@ Usage:
     # ARTIFACT_FILE of "-" reads from stdin; --depth full adds a rationale per finding.
 
     python3 external_critic.py --probe [--cost free|paid]
-    # CAPABILITY PROBE (availability != capability): feed the configured seat a tiny
-    # artifact with ONE known flaw; PASS = it NAMES the flaw (genuine critique),
-    # FAIL = it regenerates/summarizes (a null seat), UNAVAILABLE = it didn't answer.
-    # Records the verdict in the capability registry. The grader is a deterministic,
-    # non-LLM string check — a different substrate from the seat under test.
+    # CAPABILITY PROBE (availability != capability): grade the configured seat on a tiny
+    # MULTI-FLAW artifact; SCORE = how many planted flaws it NAMES (PASS = score >= 1,
+    # FAIL = a null seat that summarizes, UNAVAILABLE = it didn't answer). The score is a
+    # quantitative proxy that ranks the --select panel. Deterministic, non-LLM grader.
 
     python3 external_critic.py --select
-    # Apply the selection ladder over the registry: free+capable -> paid+capable
-    # (confirm the spend) -> same-lineage fallback (flagged "independence degraded").
+    # PANEL: up to 3 capable seats across DISTINCT lineages (independence = diversity),
+    # ranked by score, free-first; paid seats flagged to confirm the spend; none capable
+    # -> same-lineage fallback flagged "independence degraded".
 
 Config (env / .env — a set, non-empty env var always wins):
     OLLAMA_HOST    default http://localhost:11434
@@ -62,6 +62,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -207,30 +208,41 @@ def log_run(artifact, mode, depth, brief, intent):
 REGISTRY_PATH = _cfg("CRITIC_REGISTRY", os.path.join(_HERE, "critic_registry.tsv"))
 REPROBE_DAYS = 30  # model tags mutate; a PASS older than this is stale -> re-probe
 
-# A tiny PROSE artifact with ONE blatant internal contradiction — matched to the
-# real use case (these seats review DOCS, where the null failure showed up: gpt-oss
-# flags a concrete code bug yet summarized the governance bundle). A genuine reviewer
-# NAMES the contradiction; a null seat restates both lines as facts. The diagnosis
-# words ("contradict", "inconsistent", "breaking", "false") are engineered ABSENT
-# from the artifact, so a mere echo/summary cannot fake a PASS.
+# A tiny PROSE artifact with TWO independent, blatant flaws — matched to the real use
+# case (these seats review DOCS). The capability SCORE = how many the seat NAMES (0-2):
+# a quantitative proxy that RANKS seats for the --select panel (a misrank only reorders
+# the panel; the PASS gate stays binary, PASS = score >= 1). Each flaw's diagnosis words
+# are engineered ABSENT from the artifact (so an echo/summary scores 0) and use DISTINCT
+# vocab (compatibility vs testing) so the two are separately attributable.
 PROBE_ARTIFACT = (
-    "Migration note: this release is fully backward-compatible; no existing call "
-    "needs to change.\n"
-    "It also removes the get_user() endpoint entirely, so every caller must switch "
+    "Release note: this update is fully backward-compatible — no existing call needs "
+    "to change. It also removes the get_user() endpoint, so every caller must migrate "
     "to fetch_user().\n"
+    "Early benchmarks show it cuts memory use by 250%.\n"
 )
 PROBE_BRIEF = "Review this for correctness, soundness, and internal consistency."
-# Signatures of the planted flaw being NAMED. Matched lowercased but SPACE-PRESERVED
-# (stripping spaces caused substring collisions, e.g. "not incompatible" -> hit on
-# "incompatible"). Bare negatable words ("incompatible") and short-prefix phrases
-# ("cannot both", a prefix of "cannot bother") are omitted for the same reason.
-# Includes the natural dev phrasing a strong CODE model uses ("breaking", "breaks",
-# "regression") so a capable seat isn't false-failed for not saying "contradiction".
-PROBE_TOKENS = ("contradict", "inconsistent", "inconsistency", "conflict",
-                "breaking", "breaks", "regression", "incorrect", "false",
-                "not backward", "isn't backward", "is not backward",
-                "mutually exclusive", "at odds")
-PROBE_MIN_LEN = 25  # used only to label a no-token answer as null vs summarized
+# The capability SCORE counts flaws NAMED — but diagnosis vocabulary is OPEN-ended (a seat
+# may call the bad number "negative", "unrealistic", "impossible", or "over 100%"), so pure
+# per-flaw token lists keep false-missing capable seats (observed). Instead, a flaw is NAMED
+# when SOME SENTENCE pairs that flaw's SUBJECT ANCHOR with ANY critical word (below). The
+# anchor scopes the critical word to the right flaw (no cross-contamination between flaws),
+# and a summary that merely restates the subject — with no critical word in that sentence —
+# scores 0. Two flaws of DIFFERENT type: flaw A is blatant (gates PASS); flaw B is sharper
+# (a >100% reduction is impossible) so it discriminates a strong seat (2) from a shallow one (1).
+PROBE_FLAWS = (
+    ("backward-compat contradiction", ("backward", "compatib", "get_user", "fetch_user", "migrate")),
+    ("impossible >100% reduction",    ("250", "memory", "footprint")),
+)
+# A critical word marks a sentence as a CRITIQUE (not a restatement). Restricted to
+# epistemic/logical FAULT words — generic operational verbs ("cannot", "error", "invalid")
+# are excluded because a plain summary uses them ("removes get_user, so you cannot call it"),
+# which would false-PASS a null seat (Gemini's finding). The subject anchor keeps credit specific.
+PROBE_CRITICAL = ("contradict", "inconsisten", "conflict", "breaking", "breaks", "regression",
+                  "incompatible", "impossible", "unrealistic", "implausible", "nonsens",
+                  "absurd", "negative", "incorrect", "wrong", "false", "more than 100",
+                  "over 100", "exceed", "makes no sense", "no sense", "not possible", "mismatch")
+PROBE_TOKENS = PROBE_CRITICAL  # grade_probe default (the faithful --expect path passes its own)
+PROBE_MIN_LEN = 25  # below this the seat returned nothing usable (a null answer)
 
 
 def _strip_reasoning(s):
@@ -285,6 +297,33 @@ def grade_probe(output, tokens=PROBE_TOKENS, what="the contradiction"):
     return False, f"did NOT name {what} (regenerated/summarized)"
 
 
+def score_probe(output):
+    """Deterministic, non-LLM capability SCORE = number of the PROBE_FLAWS the seat
+    NAMES (0..N). A flaw is NAMED when some SENTENCE pairs its subject anchor with any
+    critical word — tolerant of open diagnosis vocabulary, yet a restating summary (no
+    critical word) scores 0. Grades the seat's ANSWER (a <think> block stripped). The
+    gate is binary (PASS = score >= 1); the score RANKS the panel."""
+    answer = _strip_reasoning(output or "")
+    if len(answer.strip()) < PROBE_MIN_LEN:
+        return 0, []
+    sents = [s.lower() for s in re.split(r"[.\n;!?]+", answer) if s.strip()]
+    # Windows = each sentence AND each adjacent pair: a critique often states the premise
+    # in one sentence and the fault in the next ("...a 250% cut. That is impossible.") —
+    # the pair window catches that without a paragraph's cross-flaw contamination.
+    windows = sents + [sents[i] + " " + sents[i + 1] for i in range(len(sents) - 1)]
+    named = [label for label, anchors in PROBE_FLAWS
+             if any(any(a in w for a in anchors) and any(c in w for c in PROBE_CRITICAL)
+                    for w in windows)]
+    return len(named), named
+
+
+def _int(s):
+    try:
+        return int(s)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _registry_records():
     recs = []
     try:
@@ -310,10 +349,10 @@ def latest_per_model(recs):
     return out
 
 
-def register(model, lineage, endpoint, result, cost, note):
+def register(model, lineage, endpoint, result, cost, score, note):
     ts = datetime.datetime.now().isoformat(timespec="seconds")
     rec = (f"date={ts}\tmodel={model}\tlineage={lineage}\tendpoint={endpoint}"
-           f"\tprobe={result}\tcost={cost}\tnote={note}\n")
+           f"\tprobe={result}\tscore={score}\tcost={cost}\tnote={note}\n")
     fresh = not os.path.exists(REGISTRY_PATH)
     try:
         with open(REGISTRY_PATH, "a", encoding="utf-8") as f:
@@ -347,7 +386,8 @@ def do_probe(cost_override, artifact_path="", expect=""):
     contradiction but summarized the governance bundle)."""
     lineage = infer_lineage(MODEL, BASE_URL)
     cost = infer_cost(BASE_URL, API_KEY, cost_override)
-    if artifact_path:
+    faithful = bool(artifact_path)
+    if faithful:
         try:
             art = sys.stdin.read() if artifact_path == "-" else \
                 open(artifact_path, encoding="utf-8").read()
@@ -359,10 +399,9 @@ def do_probe(cost_override, artifact_path="", expect=""):
         if not toks:
             sys.exit('--probe FILE needs --expect "tok1,tok2": the word(s) a genuine '
                      "critic must say when it finds the flaw you planted in FILE.")
-        kind = f"faithful probe on {os.path.basename(artifact_path)}"
-        grade = lambda out: grade_probe(out, toks, "the planted flaw")  # noqa: E731
+        kind, total = f"faithful probe on {os.path.basename(artifact_path)}", 1
     else:
-        art, kind, grade = PROBE_ARTIFACT, "floor probe", grade_probe
+        art, kind, total = PROBE_ARTIFACT, "floor probe", len(PROBE_FLAWS)
     print(f"probing: model={MODEL}  lineage={lineage}  endpoint={ENDPOINT}  cost={cost}  [{kind}]")
     if lineage in ("claude", "anthropic"):
         print("WARNING: this seat shares the builder's lineage — a PASS gives no "
@@ -370,24 +409,35 @@ def do_probe(cost_override, artifact_path="", expect=""):
     try:
         out = call_model(SYSTEM, build_prompt(art, PROBE_BRIEF, "", "correctness"))
     except Exception as e:  # noqa: BLE001 — any failure means the seat is unavailable
-        register(MODEL, lineage, ENDPOINT, "UNAVAILABLE", cost, str(e).splitlines()[0][:120])
+        register(MODEL, lineage, ENDPOINT, "UNAVAILABLE", cost, "na",
+                 str(e).splitlines()[0][:120])
         print(f"UNAVAILABLE — {e}")
         print(f"(recorded UNAVAILABLE in {REGISTRY_PATH})", file=sys.stderr)
         return 2
-    passed, signal = grade(out)
+    if faithful:                                    # binary: did it find the planted flaw?
+        passed, signal = grade_probe(out, toks, "the planted flaw")
+        score = 1 if passed else 0
+    else:                                           # quantitative: how many flaws named?
+        score, named = score_probe(out)
+        passed = score >= 1
+        signal = (f"named {score}/{total}: {', '.join(named)}" if named
+                  else "named 0 flaws (regenerated/summarized)")
     result = "PASS" if passed else "FAIL"
-    register(MODEL, lineage, ENDPOINT, result, cost, f"{kind}: {signal}")
+    register(MODEL, lineage, ENDPOINT, result, cost, score, f"{kind}: {signal}")
     print(f"\n--- probe response (truncated) ---\n{out.strip()[:600]}\n----------------------------------")
-    print(f"{result}: {signal}")
+    print(f"{result} (score {score}/{total}): {signal}")
     if not passed:
         print("  -> null seat: exclude it. A reachable model that won't name an obvious "
               "flaw adds no real check (independence-theater).")
-    print(f"(recorded {result} in {REGISTRY_PATH})", file=sys.stderr)
+    print(f"(recorded {result} score {score}/{total} in {REGISTRY_PATH})", file=sys.stderr)
     return 0 if passed else 1
 
 
-def do_select():
-    """Stage 4: apply the selection ladder over the registry; recommend a seat."""
+def do_select(top=3):
+    """Stage 4: a PANEL of up to `top` capable seats across DISTINCT lineages
+    (independence = diversity — 3 of one family share a blind spot), ranked by
+    capability score, then free-first, then recency. Free seats are usable now; a
+    paid seat is flagged to confirm the spend (the ladder, generalized to a panel)."""
     latest = latest_per_model(_registry_records())
     if not latest:
         print("no capability records yet. Run `--probe` against a different-lineage seat "
@@ -396,26 +446,38 @@ def do_select():
     capable = [r for r in latest.values()
                if r.get("probe") == "PASS"
                and r.get("lineage") not in ("claude", "anthropic", "unknown")]
-    free = sorted((r for r in capable if r.get("cost") == "free"), key=lambda r: r.get("date", ""))
-    paid = sorted((r for r in capable if r.get("cost") == "paid"), key=lambda r: r.get("date", ""))
+    if not capable:
+        print("no capable, different-lineage seat on record -> fall back to the in-harness "
+              "decorrelated-reviewer (same-lineage) and FLAG 'independence degraded.'")
+        print("Hunt a FREE+capable lineage: `--probe` each free option (local Ollama + "
+              "free-tier cloud), then re-run `--select`.")
+        return 1
 
-    def show(r, tag):
-        flag = "  ⚠ STALE — re-probe (tags mutate)" if _stale(r.get("date", "")) else ""
-        print(f"{tag}: {r['model']}  [{r.get('lineage')}]  via {r.get('endpoint')}{flag}")
+    def rank_key(r):                                # higher score, then free, then newer
+        return (_int(r.get("score")), r.get("cost") == "free", r.get("date", ""))
 
-    if free:
-        show(free[-1], "USE (free + capable)")
-        print("-> set this as CRITIC_MODEL (e.g. via critic-env) and run the critique.")
-        return 0
-    if paid:
-        show(paid[-1], "USE (paid + capable)")
-        print("-> this seat COSTS money: confirm with the owner before spending (ladder rung 2).")
-        return 0
-    print("no capable, different-lineage seat on record -> fall back to the in-harness "
-          "decorrelated-reviewer (same-lineage) and FLAG 'independence degraded.'")
-    print("Hunt a FREE+capable lineage: `--probe` each free option (local Ollama + free-tier "
-          "cloud), then re-run `--select`.")
-    return 1
+    best = {}                                       # the best seat per DISTINCT lineage
+    for r in capable:
+        lin = r["lineage"]
+        if lin not in best or rank_key(r) > rank_key(best[lin]):
+            best[lin] = r
+    panel = sorted(best.values(), key=rank_key, reverse=True)[:top]
+
+    print(f"PANEL — up to {top} capable seats across DISTINCT lineages "
+          f"(independence = diversity; weight each by independence, not authority):")
+    for i, r in enumerate(panel, 1):
+        stale = "  ⚠ STALE — re-probe" if _stale(r.get("date", "")) else ""
+        spend = "" if r.get("cost") == "free" else "  [PAID — confirm the spend first]"
+        print(f"  {i}. {r['model']}  [{r['lineage']}]  score {r.get('score', '?')}  "
+              f"{r.get('cost')}{spend}{stale}")
+        print(f"     via {r.get('endpoint')}   (set as CRITIC_MODEL / critic-env)")
+    n_free = sum(1 for r in panel if r.get("cost") == "free")
+    print(f"\nRun each as a critic and fold every view in as a CONTESTED input. Use the "
+          f"{n_free} free seat(s) now; confirm the spend before any PAID seat.")
+    if len(panel) < 2:
+        print("(only one capable lineage on record — `--probe` more free options for real "
+              "decorrelation; a one-seat 'panel' is just a single external critic.)")
+    return 0
 
 
 def main():
@@ -432,10 +494,11 @@ def main():
     ap.add_argument("--no-log", action="store_true",
                     help="don't record this run in the critique log")
     ap.add_argument("--probe", action="store_true",
-                    help="capability probe (availability != capability): does this seat "
-                         "NAME a known planted flaw? records the verdict in the registry")
+                    help="capability probe (availability != capability): SCORE the seat on a "
+                         "tiny multi-flaw artifact (PASS = score>=1); records it in the registry")
     ap.add_argument("--select", action="store_true",
-                    help="apply the selection ladder over the capability registry")
+                    help="build a PANEL of up to 3 capable seats across distinct lineages "
+                         "(ranked by score, free-first) from the capability registry")
     ap.add_argument("--cost", choices=["free", "paid"], default="",
                     help="override the inferred cost label recorded by --probe")
     ap.add_argument("--expect", default="",
