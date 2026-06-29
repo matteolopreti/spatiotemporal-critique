@@ -32,6 +32,26 @@ The model is **config-first** (`CRITIC_MODEL`); never hardcode it — the in-scr
 
 "Auto-update to the newest best model" can't be fully automated — *best* is a human judgment that changes monthly, and there's no clean registry query for it. The achievable design is config-first + a small **ranked preference list** (best first) the setup tries in order — reusing the strongest model you already have, else pulling a light default — refreshed by hand. And for reproducible work (scientific or code), **pin and log** the critic model used for a given review rather than silently auto-bumping mid-run — auto-update to stay current; pin+log (model, seed, params) so a review is auditable and reproducible on the same build (tags are mutable — re-pin after a re-pull). This is the same logged-trace discipline the Temporal axis and the assumptions ledger already use: record which critic produced the critique.
 
+## Capability detection — availability ≠ capability
+
+A reachable seat is not a capable one. A model can answer every request yet add **no real check** — it regenerates or summarizes the artifact instead of finding its flaw. That is *independence-theater*: it looks like a second opinion while sharing none of the work. Observed, on the bytes: `gpt-oss:20b` and `deepseek-r1:14b` were both reachable; on a one-line planted contradiction `gpt-oss` flagged it but `deepseek` **endorsed the contradictory claim as something to preserve** and missed it entirely. Reachability told you nothing; you have to *test the seat*.
+
+So the helper applies its own discipline — the **planted defect** — to the critic seat itself:
+
+```bash
+python3 external_critic.py --probe                 # FLOOR probe (built-in tiny artifact)
+python3 external_critic.py --probe FILE --expect "contradict,inconsistent,false"   # FAITHFUL probe
+python3 external_critic.py --select                # apply the selection ladder over the registry
+```
+
+- **Floor probe (`--probe`, default).** Feeds the configured seat a tiny artifact with **one blatant contradiction** and grades the answer with a **deterministic, non-LLM string check** (does it *name* the flaw? — diagnosis words engineered absent from the artifact, so an echo/summary can't fake it; a `<think>…</think>` block is stripped so the *answer* is graded, not the scratchpad). **PASS** = genuine critique · **FAIL** = regenerated/summarized (a null seat) · **UNAVAILABLE** = it never answered (unreachable, or a stale model id — the `gemini-…-preview` 400). Cheap triage that excludes the unreachable and the universal-summarizer in one call.
+- **Faithful probe (`--probe FILE --expect "…"`).** The floor probe is *necessary, not sufficient*: capability is **artifact-dependent**. `gpt-oss` passes the one-liner yet summarized a multi-section governance bundle — a tiny probe can't predict a large/abstract one. So for high-stakes work, plant **one** known flaw in a *slice of your real artifact* and name the word(s) a genuine critic must say (`--expect`); the same grader checks the seat caught it. This is the rung that catches **scale/abstraction-induced** nulling.
+- **Registry (`critic_registry.tsv`, next to `critique.log`).** Every probe appends `{date · model · lineage · probe · cost · note}`; the **newest record per model** wins, so a capable seat is reused, not re-probed — and a PASS older than ~30 days is flagged **stale** (tags mutate; re-probe). Gitignored, per-machine.
+- **Selection ladder (`--select`).** free + capable → **paid + capable** (it *costs money* — confirm the spend before using) → no capable different-lineage seat on record → fall back to the in-harness same-lineage reviewer, **flagged "independence degraded."** Hunt a **free + capable** lineage by probing each free option (local Ollama + free-tier cloud) and letting `--select` pick the winner as your default.
+- **A normal critique run** prints a one-line **advisory** when the chosen model has no capability-PASS on record (or a stale one) — non-blocking; it nudges you to `--probe` first.
+
+**The boundary that does not move.** A PASS certifies the seat **genuinely critiques** — it improves the *read*. It does **not** grant authority over whether the *goal* is right: that residual is the user's, and no seat (capable or not) can take it. Auto-**excluding** a null seat is legitimate because the grader is a *different substrate* (deterministic, not an LLM judgment); **trusting** a seat's verdict is still weighted by independence, never authority (Mandate 3 governs). And the floor probe's own residual — a seat that passes small yet nulls large — is why the seat stays advisory and **you still read its first real critique.**
+
 ## Setup & test
 
 ```bash

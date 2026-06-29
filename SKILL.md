@@ -58,7 +58,8 @@ Critics run by one model in one context only *approximate* independence (same we
 ./setup.sh                       # one-time: picks a local model that safely fits your RAM
                                  # (cloud: set CRITIC_BASE_URL + CRITIC_MODEL; load the key from a
                                  #  secret store, not an inline export — see EXTERNAL_CRITIC.md)
+python3 external_critic.py --probe          # availability != capability: does this seat actually critique?
 python3 external_critic.py path/to/work --brief "focus here" --mode correctness   # --mode taste; --depth full for rationale
 ```
 
-Weight it by **independence, not authority**: agreement with your own review is strong corroboration; a lone external claim is a *contested* point to surface, not a verdict (mandate 3 governs — reject it where it's wrong). It strengthens the *perspective* and *overfitting* axes, and may *surface* intent-level doubt for you to adjudicate — but cannot unilaterally confirm your goal. Model selection, the spec-aware picker, pin-and-log, and cloud setup are documented in [EXTERNAL_CRITIC.md](EXTERNAL_CRITIC.md).
+Weight it by **independence, not authority**: agreement with your own review is strong corroboration; a lone external claim is a *contested* point to surface, not a verdict (mandate 3 governs — reject it where it's wrong). It strengthens the *perspective* and *overfitting* axes, and may *surface* intent-level doubt for you to adjudicate — but cannot unilaterally confirm your goal. **First, certify the seat:** a reachable model can still be a *null* one (it summarizes instead of critiquing), so `--probe` it before you trust it — model selection, the capability probe + registry + ladder, the spec-aware picker, pin-and-log, and cloud setup are documented in [EXTERNAL_CRITIC.md](EXTERNAL_CRITIC.md).

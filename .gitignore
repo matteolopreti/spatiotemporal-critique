@@ -4,6 +4,8 @@
 cloud.env
 # per-run critic log (pin+log)
 critique.log
+# per-machine capability registry (planted-defect probe results)
+critic_registry.tsv
 # macOS
 .DS_Store
 # private project notes (Claude meta) — not part of the published framework
