@@ -108,16 +108,9 @@ def recommend_local(ram):
     return (name, gb, note), f"~{gb}GB (tight on {ram}GB — or use a cloud key for something bigger)"
 
 
-# Cloud providers (OpenAI-compatible base URLs). Each a DIFFERENT lineage from Claude.
-# Base URLs are perishable — verify on the vendor's own docs before trusting.
-PROVIDERS = {
-    "openai":       ("GPT",      "https://api.openai.com/v1"),
-    "google":       ("Gemini",   "https://generativelanguage.googleapis.com/v1beta/openai"),
-    "deepseek":     ("DeepSeek", "https://api.deepseek.com/v1"),
-    "glm":          ("GLM",      "https://api.z.ai/api/paas/v4"),
-    "mistral":      ("Mistral",  "https://api.mistral.ai/v1"),
-    "ollama-cloud": ("(varies)", "https://ollama.com/v1"),
-}
+# Cloud providers live in the shared critic_providers module (one source of truth,
+# imported by external_critic.py too, so the map can't drift between the two scripts).
+from critic_providers import PROVIDERS  # noqa: E402
 
 
 def key_storage_cmd(osn, provider):
@@ -218,15 +211,67 @@ def show_cloud(provider, osn, shell, rc):
     print(f"  builds ONE panel spanning all your distinct lineages — both keys are recognized.")
 
 
+_MARKER = "# external critic (spatiotemporal-critique) — critic-env <provider> [model]"
+
+
+def do_install(osn, shell, rc, assume_yes):
+    """Consent-gated, idempotent: append the critic-env function to the rc file. ONE
+    upfront prompt (not per-action). Prints the key-store commands (each interactive +
+    safe) — it never types your key. Returns a non-zero code in a non-TTY session that
+    gave no --yes, so CI knows nothing was installed."""
+    if shell not in ("zsh", "bash", "fish"):
+        print(f"--install writes rc files for zsh/bash/fish; on {shell} use the printed guidance:")
+        show_cloud(next(iter(PROVIDERS)), osn, shell, rc)
+        return 2
+    snippet = env_snippet(shell, osn)
+    try:
+        existing = open(rc, encoding="utf-8").read() if os.path.exists(rc) else ""
+    except OSError:
+        existing = ""
+    if "critic-env()" in existing or "function critic-env" in existing:
+        print(f"critic-env is already in {rc} — nothing to append (idempotent).")
+    else:
+        if not assume_yes and not sys.stdin.isatty():
+            print(f"would append critic-env to {rc}, but this is non-interactive and no --yes was given.\n"
+                  f"re-run with --yes, or paste it yourself (python3 critic_setup.py --provider <x>).")
+            return 1
+        ok = assume_yes or input(f"Append the critic-env function to {rc}? [y/N] ").strip().lower() in ("y", "yes")
+        if not ok:
+            print("declined — nothing written.")
+            return 0
+        try:
+            with open(rc, "a", encoding="utf-8") as f:
+                f.write(f"\n{_MARKER}\n{snippet}\n")
+            print(f"✓ appended critic-env to {rc} — open a new shell or `source {rc}`.")
+        except OSError as e:
+            sys.exit(f"could not write {rc}: {e}")
+    print("\nNow store each provider's key (interactive prompt — never on the command line/history):")
+    for p in ("openai", "google"):
+        print("   " + key_storage_cmd(osn, p))
+    print("   …(same for deepseek | glm | mistral | ollama-cloud)")
+    print("\nThen configure the panel:  critic-env <provider> ; python3 external_critic.py --configure")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="Guided, cross-platform setup for the external critic.")
     ap.add_argument("--provider", default="local",
                     choices=["local", "list", *PROVIDERS],
                     help="local Ollama (default, free) | a cloud vendor | 'list' to show the table")
+    ap.add_argument("--install", action="store_true",
+                    help="consent-gated: append the critic-env function to your shell rc (idempotent)")
+    ap.add_argument("--yes", action="store_true",
+                    help="assume yes (for --install in a non-interactive session)")
     args = ap.parse_args()
 
     osn, shell = os_name(), detect_shell()
     rc, ram = rc_file(shell), ram_gb()
+
+    if args.install:
+        print(f"# external-critic install — {osn} · {shell} · rc={rc}\n")
+        print("This will APPEND a critic-env function to your rc (with your ok) and PRINT key-store commands.")
+        print("It never stores a key itself, installs software, or pulls a model.\n")
+        sys.exit(do_install(osn, shell, rc, args.yes))
 
     if args.provider == "list":
         print("Cloud providers (each a different lineage from Claude; verify base URLs on vendor docs):")
@@ -240,8 +285,7 @@ def main():
         show_local(osn, shell, ram)
     else:
         show_cloud(args.provider, osn, shell, rc)
-    print("\nNever commit the key. This script only DETECTS and PRINTS — it stores nothing, "
-          "installs nothing, and pulls nothing on its own.")
+    print("\nThis prints guidance only (stores/installs/pulls nothing). To append the function for you: --install.")
 
 
 if __name__ == "__main__":

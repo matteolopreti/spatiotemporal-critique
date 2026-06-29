@@ -32,10 +32,14 @@ Usage:
     # FAIL = a null seat that summarizes, UNAVAILABLE = it didn't answer). The score is a
     # quantitative proxy that ranks the --select panel. Deterministic, non-LLM grader.
 
+    python3 external_critic.py --configure [--project] [--choose "m1,m2"]
+    # CHECK configured providers -> a grouped-by-lineage table -> pick 1-3 -> REMEMBER the
+    # panel (critic_panel.json). Re-run to keep/update; it flags models new since last check.
+    # Paid models are listed UNPROBED (never auto-spent). --project saves to ./.critic/.
+
     python3 external_critic.py --select
-    # PANEL: up to 3 capable seats across DISTINCT lineages (independence = diversity),
-    # ranked by score, free-first; paid seats flagged to confirm the spend; none capable
-    # -> same-lineage fallback flagged "independence degraded".
+    # Shows the REMEMBERED panel if you set one (--configure); else auto-derives a PANEL of
+    # up to 3 capable seats across DISTINCT lineages (score-ranked, free-first; paid flagged).
 
 Config (env / .env — a set, non-empty env var always wins):
     OLLAMA_HOST    default http://localhost:11434
@@ -62,10 +66,17 @@ import argparse
 import datetime
 import json
 import os
+import platform
 import re
+import subprocess
 import sys
 import urllib.error
 import urllib.request
+
+try:
+    from critic_providers import PROVIDERS   # shared map (also used by critic_setup.py)
+except ImportError:                          # --configure needs it; probe/select/discover don't
+    PROVIDERS = {}
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -434,10 +445,21 @@ def do_probe(cost_override, artifact_path="", expect=""):
 
 
 def do_select(top=3):
-    """Stage 4: a PANEL of up to `top` capable seats across DISTINCT lineages
-    (independence = diversity — 3 of one family share a blind spot), ranked by
-    capability score, then free-first, then recency. Free seats are usable now; a
-    paid seat is flagged to confirm the spend (the ladder, generalized to a panel)."""
+    """Show the REMEMBERED panel (set by --configure) if present — the single source of
+    truth. Otherwise auto-derive a panel of up to `top` capable seats across DISTINCT
+    lineages (independence = diversity), ranked by score then free-first then recency;
+    paid seats flagged to confirm the spend."""
+    panel = read_panel()
+    if panel and panel.get("selected"):
+        print(f"REMEMBERED PANEL  ({_panel_path_read()}):")
+        for s in panel["selected"]:
+            spend = "" if s.get("cost") == "free" else "  [PAID — confirm the spend first]"
+            print(f"  · {s['model']}  [{s.get('lineage')}]  score {s.get('score', '?')}  {s.get('cost')}{spend}")
+        age = _panel_age_days(panel)
+        if age > REFRESH_DAYS:
+            print(f"  (chosen {age}d ago — run `--configure` to re-check for new models)")
+        print("Run each as a critic; fold every view in as a contested input. Re-pick with `--configure`.")
+        return 0
     latest = latest_per_model(_registry_records())
     if not latest:
         print("no capability records yet. Run `--probe` against a different-lineage seat "
@@ -573,6 +595,158 @@ def do_discover():
     return 0
 
 
+# --- Remembered panel: the user's chosen 1-3 critics (single source of truth) ------
+# Resolution: a project-local ./.critic/critic_panel.json OVERRIDES the global one
+# (next to the registry) — no merge. --select reads it; --configure writes it; the
+# registry only supplies live scores. The project file is created ONLY by an explicit
+# `--configure --project`; NOTHING writes it at startup.
+PANEL_GLOBAL = _cfg("CRITIC_PANEL", os.path.join(_HERE, "critic_panel.json"))
+PANEL_PROJECT = os.path.join(".critic", "critic_panel.json")
+REFRESH_DAYS = 7   # a panel older than this is flagged "re-check for new models" (date-compare only)
+
+
+def _panel_path_read():
+    return PANEL_PROJECT if os.path.exists(PANEL_PROJECT) else PANEL_GLOBAL
+
+
+def read_panel():
+    try:
+        with open(_panel_path_read(), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def write_panel(selected, seen, project):
+    path = PANEL_PROJECT if project else PANEL_GLOBAL
+    if os.path.dirname(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    data = {"selected": selected,
+            "checked": datetime.datetime.now().isoformat(timespec="seconds"),
+            "seen": sorted(set(seen))}
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        return path
+    except OSError as e:
+        sys.exit(f"could not write {path}: {e}")
+
+
+def _panel_age_days(panel):
+    try:
+        return (datetime.datetime.now() - datetime.datetime.fromisoformat(panel.get("checked", ""))).days
+    except (ValueError, TypeError):
+        return 999
+
+
+def _discover_at(base, key):
+    req = urllib.request.Request(f"{base.rstrip('/')}/models",
+                                 headers={"Authorization": f"Bearer {key}"} if key else {})
+    data = json.loads(urllib.request.urlopen(req, timeout=20).read())
+    return [m.get("id", "") for m in data.get("data", [])]
+
+
+def _provider_key(provider):
+    """Load a provider's stored key per-OS (read-only; never printed). None if absent."""
+    item = f"critic-api-key-{provider}"
+    try:
+        if platform.system() == "Darwin":
+            r = subprocess.run(["security", "find-generic-password", "-s", item, "-w"],
+                               capture_output=True, text=True, timeout=5)
+            return r.stdout.strip() or None
+        if platform.system() == "Linux":
+            r = subprocess.run(["secret-tool", "lookup", "service", item],
+                               capture_output=True, text=True, timeout=5)
+            return (r.stdout.strip() or None) if r.returncode == 0 else None
+        if platform.system() == "Windows":
+            return os.environ.get("CRITIC_API_KEY_" + provider.upper().replace("-", "_")) or None
+    except Exception:  # noqa: BLE001 — best effort; missing key is normal
+        return None
+    return None
+
+
+def _candidate_rows():
+    """[lineage, model, endpoint, cost, score] from the registry (PASS seats) + a FREE
+    discovery of each provider whose key is on this machine. Never probes (no paid call)."""
+    scored = latest_per_model(_registry_records())
+    seen, rows, listed = set(), [], set()
+    for r in scored.values():
+        seen.add(r["model"])
+        if r.get("probe") == "PASS" and r.get("lineage") not in ("claude", "anthropic"):
+            rows.append([r.get("lineage", "?"), r["model"], r.get("endpoint", ""),
+                         r.get("cost", "?"), str(r.get("score", "?"))])
+            listed.add(r["model"])
+    for prov, (lineage, base) in PROVIDERS.items():
+        key = _provider_key(prov)
+        if not key:
+            continue
+        try:
+            ids = _discover_at(base, key)              # free /models list, not a paid call
+        except Exception:  # noqa: BLE001
+            continue
+        for mid in sorted({i for i in ids if _suitable(i)}, key=lambda i: (_version(i), i), reverse=True)[:2]:
+            name = mid.replace("models/", "")
+            seen.add(name)
+            if name not in listed:
+                rows.append([lineage, name, base, "paid", "unprobed"])   # paid stays UNPROBED (consent-gated)
+                listed.add(name)
+    return rows, seen
+
+
+def do_configure(project, explicit):
+    """Check configured providers -> grouped-by-lineage table -> pick 1-3 -> remember.
+    Paid models are listed UNPROBED (no auto-spend); free/local scores come from the registry."""
+    prior = read_panel()
+    rows, seen = _candidate_rows()
+    if not rows:
+        print("nothing to choose yet — `--probe` a local seat or store a cloud key "
+              "(`critic_setup.py --install`), then re-run --configure.")
+        return 1
+    if prior and not explicit:                          # keep-or-update + new-model flag
+        cur = ", ".join(s["model"] for s in prior.get("selected", []))
+        new = sorted(set(seen) - set(prior.get("seen", [])))
+        print(f"current panel: {cur or '(empty)'}   (chosen {_panel_age_days(prior)}d ago)")
+        if new:
+            print(f"⚑ {len(new)} new model(s) since last check: {', '.join(new[:6])}")
+        if sys.stdin.isatty() and input("keep it? [Y/n] ").strip().lower() not in ("n", "no"):
+            print("kept.")
+            return 0
+
+    by_lin = {}
+    for r in rows:
+        by_lin.setdefault(r[0], []).append(r)
+    flat = []
+    print("\nAvailable critics (grouped by lineage — pick 1-3, ideally one per lineage):")
+    for lin in sorted(by_lin):
+        print(f"  {lin}:")
+        for r in by_lin[lin]:
+            flat.append(r)
+            print(f"    [{len(flat)}] {r[1]:34} {r[3]:5} score={r[4]}")
+
+    if explicit:
+        want = [c.strip() for c in explicit.split(",") if c.strip()]
+        picks = [r for r in flat if r[1] in want]
+    elif sys.stdin.isatty():
+        idx = [int(x) for x in re.findall(r"\d+", input("\npick numbers (e.g. 1,3): "))]
+        picks = [flat[i - 1] for i in idx if 1 <= i <= len(flat)]
+    else:
+        print('\nnon-interactive: pass `--configure --choose "model1,model2"` to choose. nothing saved.')
+        return 1
+
+    if not 1 <= len(picks) <= 3:
+        print(f"pick 1-3 (got {len(picks)}). nothing saved.")
+        return 1
+    lins = [p[0] for p in picks]
+    if len(set(lins)) < len(lins):
+        print("note: two picks share a lineage — that lowers decorrelation (a panel wants diverse families).")
+    selected = [{"model": p[1], "lineage": p[0], "endpoint": p[2], "cost": p[3], "score": p[4]} for p in picks]
+    path = write_panel(selected, seen, project)
+    print(f"\n✓ saved {len(selected)}-critic panel -> {path}")
+    for s in selected:
+        print(f"    {s['model']}  [{s['lineage']}]  {s['cost']}  score={s['score']}")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Independent critique via local Ollama or an OpenAI-compatible endpoint.")
@@ -595,6 +769,13 @@ def main():
     ap.add_argument("--discover", action="store_true",
                     help="list the models this key/endpoint can serve (newest-first), with "
                          "cost tier + capability score — don't hard-code a model")
+    ap.add_argument("--configure", action="store_true",
+                    help="check configured providers -> grouped-by-lineage table -> pick 1-3 -> "
+                         "REMEMBER the panel (keep/update + flags new models)")
+    ap.add_argument("--project", action="store_true",
+                    help="with --configure: save the panel project-locally (./.critic/) not globally")
+    ap.add_argument("--choose", default="",
+                    help='with --configure (non-interactive): comma-separated model ids to select')
     ap.add_argument("--cost", choices=["free", "paid"], default="",
                     help="override the inferred cost label recorded by --probe")
     ap.add_argument("--expect", default="",
@@ -602,6 +783,8 @@ def main():
                          "genuine critic must say when it finds the flaw you planted")
     args = ap.parse_args()
 
+    if args.configure:
+        sys.exit(do_configure(args.project, args.choose))
     if args.discover:
         sys.exit(do_discover())
     if args.probe:
@@ -609,7 +792,7 @@ def main():
     if args.select:
         sys.exit(do_select())
     if not args.artifact:
-        ap.error("artifact is required (or pass --discover / --probe / --select)")
+        ap.error("artifact is required (or pass --configure / --discover / --probe / --select)")
 
     if args.artifact == "-":
         text = sys.stdin.read()
@@ -626,6 +809,11 @@ def main():
     elif _stale(_seat.get("date", "")):
         print(f"(advisory: '{MODEL}' capability-PASS is stale — re-probe; tags mutate)",
               file=sys.stderr)
+    # Cheap date-compare only (no network): nudge to re-check for new models periodically.
+    _pn = read_panel()
+    if _pn and _panel_age_days(_pn) > REFRESH_DAYS:
+        print(f"(advisory: critic panel is {_panel_age_days(_pn)}d old — run `--configure` to "
+              f"check for newer models)", file=sys.stderr)
 
     system = SYSTEM + (DEPTH_FULL if args.depth == "full" else "")
     try:

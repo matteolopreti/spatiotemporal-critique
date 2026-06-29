@@ -6,6 +6,8 @@ cloud.env
 critique.log
 # per-machine capability registry (planted-defect probe results)
 critic_registry.tsv
+# per-machine remembered panel (the user's chosen 1-3 critics, written by --configure)
+critic_panel.json
 # macOS
 .DS_Store
 # private project notes (Claude meta) — not part of the published framework
