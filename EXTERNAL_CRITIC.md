@@ -77,28 +77,36 @@ python3 external_critic.py path/to/draft.md --brief "focus here" --mode correctn
 The skill is **not tied to any one vendor** — it's about *your* key. Cloud mode is fully env-driven: set `CRITIC_BASE_URL` (+ `CRITIC_API_KEY` for keyed endpoints) for *whichever* provider you have — OpenAI, Google, DeepSeek, GLM, Mistral, or **Ollama Cloud** (see the lineage map above). `critic_setup.py --provider <name>` prints the right block for your shell; this is the generic form. The trap is the **key**: an inline `export CRITIC_API_KEY=sk-…` lands in your shell history, and `.env` lands it on disk. Store it once in your OS secret store and load it *only for the run*:
 
 ```bash
-# store the key once (prompts; nothing written to a dotfile or to history) — a GENERIC item name:
-#   macOS:  security add-generic-password -s critic-api-key -a "$USER" -w
-#   Linux:  secret-tool store --label=critic-api-key service critic-api-key      # or use `pass`
-#   Windows: a User env var the PowerShell critic-env reads back — set it via System Properties
-#            (Environment Variables) for no history, or `setx CRITIC_API_KEY "<key>"`. NOT cmdkey
-#            (Credential Manager isn't read by the flow). `critic_setup.py --provider <x>` prints it.
+# store EACH provider's key once (prompts; nothing on a dotfile or in history) — a PER-PROVIDER item,
+# so OpenAI + Google + … coexist (`critic_setup.py --provider <x>` prints the exact command):
+#   macOS:  security add-generic-password -s critic-api-key-google -a "$USER" -w
+#   Linux:  secret-tool store --label=critic-api-key-google service critic-api-key-google   # or use `pass`
+#   Windows: [Environment]::SetEnvironmentVariable("CRITIC_API_KEY_GOOGLE",(Read-Host "key"),"User")  # PowerShell;
+#            Read-Host prompts -> no history. NOT cmdkey (Credential Manager isn't read by the flow), not bare setx.
 
-# a reusable shell function (in your shell rc) that loads endpoint + key just-in-time.
-# Pick YOUR provider's base URL (critic_setup.py --provider list shows them):
-critic-env() {                                  # usage: critic-env [model]
-  export CRITIC_BASE_URL="<your-provider-base-url>"     # e.g. https://api.openai.com/v1
-  export CRITIC_MODEL="${1:-}"                          # leave empty -> --discover picks the latest
-  export CRITIC_API_KEY="$(security find-generic-password -s critic-api-key -w 2>/dev/null)"
-  #   Linux: CRITIC_API_KEY="$(secret-tool lookup service critic-api-key)"
-  [ -n "$CRITIC_API_KEY" ] && echo "critic-env ready" || echo "WARN: key not in keychain" >&2
+# ONE function (in your shell rc) for ALL your providers — each key in its OWN item, so
+# OpenAI + Google + … coexist. `critic_setup.py --provider <x>` prints this for your shell:
+critic-env() {                                  # usage: critic-env <provider> [model]
+  case "$1" in
+    openai)   export CRITIC_BASE_URL="https://api.openai.com/v1" ;;
+    google)   export CRITIC_BASE_URL="https://generativelanguage.googleapis.com/v1beta/openai" ;;
+    deepseek) export CRITIC_BASE_URL="https://api.deepseek.com/v1" ;;
+    # …glm | mistral | ollama-cloud — see the lineage map above
+    *) echo "usage: critic-env <provider> [model]" >&2; return 1 ;;
+  esac
+  export CRITIC_MODEL="${2:-}"                                          # empty -> --discover picks the latest
+  export CRITIC_API_KEY="$(security find-generic-password -s critic-api-key-$1 -w 2>/dev/null)"   # per-provider item
+  #   Linux: CRITIC_API_KEY="$(secret-tool lookup service critic-api-key-$1)"
+  [ -n "$CRITIC_API_KEY" ] && echo "critic-env: $1 ready" || echo "WARN: no key stored for $1" >&2
 }
 
-critic-env                                                          # load for this shell
+critic-env google                                                  # load THIS provider (store its key first, above)
 python3 external_critic.py --discover                              # which models can this key serve? (newest-first)
 python3 external_critic.py --probe                                 # certify the one you pick
 python3 external_critic.py draft.md --mode correctness             # run a review (--depth full for rationale)
 ```
+
+**Two keys (e.g. OpenAI + Google)? Both are recognized.** Store each under its own item (`critic-api-key-openai`, `critic-api-key-google`), then `critic-env openai` → `--probe` a model, `critic-env google` → `--probe` a model. The registry keeps every capable seat across providers, and `--select` builds **one panel spanning all your distinct lineages** — that diversity *is* the decorrelation the panel is for.
 
 Don't hard-code a model — `--discover` lists what the key serves, newest-first, so a new release auto-surfaces and you choose by score and free/paid. The key lives only in the secret store and in this one shell's env — never in a file or your history. The helper omits request fields strict OpenAI-compat shims reject (e.g. `seed`) and surfaces the endpoint's own error text if a request is refused.
 

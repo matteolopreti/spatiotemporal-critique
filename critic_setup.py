@@ -120,52 +120,67 @@ PROVIDERS = {
 }
 
 
-def key_storage_cmd(osn, item="critic-api-key"):
+def key_storage_cmd(osn, provider):
+    """Store THIS provider's key under a PER-PROVIDER item, so several keys (OpenAI +
+    Google + …) coexist without overwriting each other."""
+    item = f"critic-api-key-{provider}"
+    envvar = "CRITIC_API_KEY_" + provider.upper().replace("-", "_")
     return {
         # the trailing -w with NO value PROMPTS — the key never lands on the command line/history
         "Darwin": f'security add-generic-password -s {item} -a "$USER" -w   # prompts; nothing on disk/history',
         "Linux":  f'secret-tool store --label="{item}" service {item}        # prompts; or use `pass`',
-        # native Windows: a User env var. setx writes to console history, so prefer the GUI for secrecy.
-        "Windows": 'System Properties > Environment Variables > New User variable CRITIC_API_KEY  '
-                   '(GUI = no history)\n       #   quick alt (writes to console history): '
-                   'setx CRITIC_API_KEY "<paste-key>"',
-    }.get(osn, "store the key in your OS secret manager (never a dotfile or your shell history)")
+        # native Windows: a per-provider User env var, set via Read-Host so the key is NEVER on the
+        # command line / PSReadLine history (setx would leak it; the GUI works too).
+        "Windows": f'[Environment]::SetEnvironmentVariable("{envvar}", (Read-Host "Paste {provider} key"), "User")'
+                   '   # PowerShell; prompts, nothing in history',
+    }.get(osn, f"store the key as {item} in your OS secret manager (never a dotfile or your history)")
 
 
-def key_load_expr(osn, item="critic-api-key"):
-    return {
-        "Darwin": f'$(security find-generic-password -s {item} -w 2>/dev/null)',
-        "Linux":  f'$(secret-tool lookup service {item})',
-        "Windows": "$env:CRITIC_API_KEY",  # already present once stored as a User env var
-    }.get(osn, "<your key, loaded from the secret store>")
-
-
-def env_snippet(shell, base_url, osn):
-    """A `critic-env`-style function for the detected shell. Loads endpoint + key
-    just-in-time; leaves CRITIC_MODEL empty so `--discover` can choose."""
-    load = key_load_expr(osn)
+def env_snippet(shell, osn):
+    """ONE `critic-env <provider> [model]` for the detected shell — it switches the base
+    URL per provider and loads THAT provider's per-provider key, so all your keys coexist
+    behind a single function. CRITIC_MODEL is left empty so `--discover` can choose."""
+    names = " | ".join(PROVIDERS)
     if shell in ("zsh", "bash"):
-        return ("critic-env() {                       # usage: critic-env [model]\n"
-                f'  export CRITIC_BASE_URL="{base_url}"\n'
-                '  export CRITIC_MODEL="${1:-}"        # empty -> run `--discover` to pick\n'
-                f'  export CRITIC_API_KEY="{load}"\n'
-                '  [ -n "$CRITIC_API_KEY" ] && echo "critic-env ready" || echo "WARN: key not found" >&2\n'
+        cases = "\n".join(f'    {p}) export CRITIC_BASE_URL="{u}" ;;' for p, (lg, u) in PROVIDERS.items())
+        load = {"Darwin": 'export CRITIC_API_KEY="$(security find-generic-password -s critic-api-key-$1 -w 2>/dev/null)"',
+                "Linux":  'export CRITIC_API_KEY="$(secret-tool lookup service critic-api-key-$1)"',
+                }.get(osn, 'export CRITIC_API_KEY="$CRITIC_API_KEY"   # load critic-api-key-$1 from your secret store')
+        return ("critic-env() {                          # usage: critic-env <provider> [model]\n"
+                '  case "$1" in\n'
+                f"{cases}\n"
+                f'    *) echo "usage: critic-env <{names}> [model]" >&2; return 1 ;;\n'
+                "  esac\n"
+                '  export CRITIC_MODEL="${2:-}"           # empty -> --discover picks\n'
+                f"  {load}\n"
+                '  [ -n "$CRITIC_API_KEY" ] && echo "critic-env: $1 ready" || echo "WARN: no key stored for $1" >&2\n'
                 "}")
     if shell == "fish":
-        return ("function critic-env            # usage: critic-env [model]\n"
-                f'  set -gx CRITIC_BASE_URL "{base_url}"\n'
-                "  set -gx CRITIC_MODEL $argv[1]\n"
-                f'  set -gx CRITIC_API_KEY ({load})\n'
+        cases = "\n".join(f'    case {p}; set -gx CRITIC_BASE_URL "{u}"' for p, (lg, u) in PROVIDERS.items())
+        load = {"Darwin": "set -gx CRITIC_API_KEY (security find-generic-password -s critic-api-key-$argv[1] -w 2>/dev/null)",
+                "Linux":  "set -gx CRITIC_API_KEY (secret-tool lookup service critic-api-key-$argv[1])",
+                }.get(osn, "set -gx CRITIC_API_KEY $CRITIC_API_KEY")
+        return ("function critic-env               # usage: critic-env <provider> [model]\n"
+                "  switch $argv[1]\n"
+                f"{cases}\n"
+                f'    case "*"; echo "usage: critic-env <{names}> [model]" >&2; return 1\n'
+                "  end\n"
+                '  set -gx CRITIC_MODEL "$argv[2]"   # quoted: omitted arg -> empty string, not unset\n'
+                f"  {load}\n"
                 "end")
     if shell == "powershell":
-        # CRITIC_API_KEY is a User env var (set once); a new shell already has it in $env.
-        return ("function critic-env {            # usage: critic-env [model]\n"
-                f'  $env:CRITIC_BASE_URL = "{base_url}"\n'
-                "  $env:CRITIC_MODEL = $args[0]\n"
-                "  if (-not $env:CRITIC_API_KEY) { Write-Warning 'CRITIC_API_KEY not set (User env var)' }\n"
+        cases = "\n".join(f'    "{p}" {{ $env:CRITIC_BASE_URL = "{u}" }}' for p, (lg, u) in PROVIDERS.items())
+        return ("function critic-env {              # usage: critic-env <provider> [model]\n"
+                "  switch ($args[0]) {\n"
+                f"{cases}\n"
+                f'    default {{ Write-Error "usage: critic-env <{names}> [model]"; return }}\n'
+                "  }\n"
+                "  $env:CRITIC_MODEL = $args[1]\n"
+                '  $key = "CRITIC_API_KEY_" + $args[0].ToUpper().Replace("-","_")\n'
+                '  $env:CRITIC_API_KEY = [Environment]::GetEnvironmentVariable($key, "User")\n'
+                '  if (-not $env:CRITIC_API_KEY) { Write-Warning "no key stored for $($args[0]) ($key)" }\n'
                 "}")
-    return (f'set CRITIC_BASE_URL={base_url}\nset CRITIC_API_KEY=<your key>   '
-            "(prefer a User env var over an inline set so it persists, not your history)")
+    return "# set CRITIC_BASE_URL per provider and load CRITIC_API_KEY from your OS secret store"
 
 
 def show_local(osn, shell, ram):
@@ -188,15 +203,19 @@ def show_cloud(provider, osn, shell, rc):
     lineage, base = PROVIDERS[provider]
     print(f"CLOUD PROVIDER: {provider}  (lineage: {lineage}; a paid/keyed, different-lineage seat)")
     print(f"  verify the base URL on the vendor's docs (these move): {base}\n")
-    print("  1) store your API key in your OS secret store — NOT a dotfile, NOT your shell history:")
-    print("       " + key_storage_cmd(osn))
-    print(f"\n  2) add this to your shell profile ({rc}):\n")
-    for line in env_snippet(shell, base, osn).splitlines():
+    print(f"  1) store {provider}'s key under its OWN item (so several keys coexist) — never a dotfile/history:")
+    print("       " + key_storage_cmd(osn, provider))
+    print(f"\n  2) add this ONE function to your shell profile ({rc}) — it handles ALL your providers:\n")
+    for line in env_snippet(shell, osn).splitlines():
         print("       " + line)
-    print("\n  3) load it, then DISCOVER which models that key can use (pick by score & free/paid):")
-    print("       critic-env")
-    print("       python3 external_critic.py --discover")
-    print("       python3 external_critic.py --select        # panel: distinct lineages, paid flagged")
+    print(f"\n  3) load THIS provider, discover its models, certify, build the panel:")
+    print(f"       critic-env {provider}")
+    print("       python3 external_critic.py --discover     # models this key serves, newest-first + score")
+    print("       python3 external_critic.py --probe        # certify the one you pick")
+    print("       python3 external_critic.py --select       # panel across your lineages; paid flagged")
+    print(f"\n  MULTIPLE KEYS (e.g. OpenAI + Google)? Repeat step 1 for each (its own item), then before probing")
+    print(f"  each, switch with `critic-env <provider>`. The registry keeps every capable seat, and `--select`")
+    print(f"  builds ONE panel spanning all your distinct lineages — both keys are recognized.")
 
 
 def main():
