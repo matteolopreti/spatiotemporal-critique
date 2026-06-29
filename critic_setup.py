@@ -189,7 +189,7 @@ def show_local(osn, shell, ram):
     else:
         print(f"  · {why}")
     print("  · certify it really critiques:  python3 external_critic.py --probe")
-    print("  · then build the panel:         python3 external_critic.py --select")
+    print("  · then build the panel:         python3 external_critic.py --configure")
 
 
 def show_cloud(provider, osn, shell, rc):
@@ -205,9 +205,9 @@ def show_cloud(provider, osn, shell, rc):
     print(f"       critic-env {provider}")
     print("       python3 external_critic.py --discover     # models this key serves, newest-first + score")
     print("       python3 external_critic.py --probe        # certify the one you pick")
-    print("       python3 external_critic.py --select       # panel across your lineages; paid flagged")
+    print("       python3 external_critic.py --configure    # pick + REMEMBER 1-3 across lineages; paid flagged")
     print(f"\n  MULTIPLE KEYS (e.g. OpenAI + Google)? Repeat step 1 for each (its own item), then before probing")
-    print(f"  each, switch with `critic-env <provider>`. The registry keeps every capable seat, and `--select`")
+    print(f"  each, switch with `critic-env <provider>`. The registry keeps every capable seat, and `--configure`")
     print(f"  builds ONE panel spanning all your distinct lineages — both keys are recognized.")
 
 

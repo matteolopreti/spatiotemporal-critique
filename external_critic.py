@@ -30,16 +30,16 @@ Usage:
     # CAPABILITY PROBE (availability != capability): grade the configured seat on a tiny
     # MULTI-FLAW artifact; SCORE = how many planted flaws it NAMES (PASS = score >= 1,
     # FAIL = a null seat that summarizes, UNAVAILABLE = it didn't answer). The score is a
-    # quantitative proxy that ranks the --select panel. Deterministic, non-LLM grader.
+    # quantitative proxy that ranks the panel. Deterministic, non-LLM grader.
 
-    python3 external_critic.py --configure [--project] [--choose "m1,m2"]
-    # CHECK configured providers -> a grouped-by-lineage table -> pick 1-3 -> REMEMBER the
-    # panel (critic_panel.json). Re-run to keep/update; it flags models new since last check.
-    # Paid models are listed UNPROBED (never auto-spent). --project saves to ./.critic/.
+    python3 external_critic.py --configure [--auto] [--project] [--choose "m1,m2"]
+    # PICK your panel: configured providers -> grouped-by-lineage table -> pick 1-3 (or --auto
+    # for the score-ranked, free-first suggestion) -> REMEMBER it (critic_panel.json). Re-run to
+    # keep/update; flags new models. Paid listed UNPROBED. --project saves to ./.critic/.
 
-    python3 external_critic.py --select
-    # Shows the REMEMBERED panel if you set one (--configure); else auto-derives a PANEL of
-    # up to 3 capable seats across DISTINCT lineages (score-ranked, free-first; paid flagged).
+    python3 external_critic.py ARTIFACT_FILE --panel [--yes]
+    # RUN the remembered panel: each chosen seat critiques ARTIFACT_FILE; every view prints as
+    # a CONTESTED input for synthesis. Paid seats are spend-gated (--yes to allow them).
 
 Config (env / .env — a set, non-empty env var always wins):
     OLLAMA_HOST    default http://localhost:11434
@@ -156,21 +156,25 @@ def build_prompt(artifact, brief, intent, mode):
     return "\n".join(parts)
 
 
-def call_model(system, prompt):
+def call_model(system, prompt, model=None, base_url=None, api_key=None):
+    # Per-seat overrides (--panel runs several seats); each falls back to the module global.
+    model = model or MODEL
+    base_url = BASE_URL if base_url is None else base_url
+    api_key = API_KEY if api_key is None else api_key
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": prompt},
     ]
     headers = {"Content-Type": "application/json"}
-    if BASE_URL:  # OpenAI-compatible endpoint (cloud, or any local /v1 server)
-        url = f"{BASE_URL.rstrip('/')}/chat/completions"
-        body = {"model": MODEL, "messages": messages, "stream": False, **OPENAI_OPTIONS}
-        if API_KEY:
-            headers["Authorization"] = f"Bearer {API_KEY}"
+    if base_url:  # OpenAI-compatible endpoint (cloud, or any local /v1 server)
+        url = f"{base_url.rstrip('/')}/chat/completions"
+        body = {"model": model, "messages": messages, "stream": False, **OPENAI_OPTIONS}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         path = ("choices", 0, "message", "content")
     else:         # Ollama native (default; private, on localhost)
         url = f"{HOST}/api/chat"
-        body = {"model": MODEL, "messages": messages, "stream": False, "options": OPTIONS}
+        body = {"model": model, "messages": messages, "stream": False, "options": OPTIONS}
         path = ("message", "content")
     req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers)
     try:
@@ -184,14 +188,17 @@ def call_model(system, prompt):
     return data
 
 
-def log_run(artifact, mode, depth, brief, intent):
+def log_run(artifact, mode, depth, brief, intent, model=None, endpoint=None, base_url=None):
     """Pin-and-log: record which model (and sampling params) produced which
     critique — the logged-trace discipline the Temporal axis and ledger use.
     depth is logged too: it changes the prompt, so it's part of reproducibility.
+    model/endpoint/base_url override the globals so --panel logs each seat.
     Returns True if the record was written."""
+    model, endpoint = model or MODEL, endpoint or ENDPOINT
+    cloud = BASE_URL if base_url is None else base_url
     ts = datetime.datetime.now().isoformat(timespec="seconds")
-    seed = "na" if BASE_URL else OPTIONS["seed"]  # seed isn't sent on the cloud path
-    rec = (f"{ts}\tmodel={MODEL}\tendpoint={ENDPOINT}\tmode={mode}\tdepth={depth}"
+    seed = "na" if cloud else OPTIONS["seed"]  # seed isn't sent on the cloud path
+    rec = (f"{ts}\tmodel={model}\tendpoint={endpoint}\tmode={mode}\tdepth={depth}"
            f"\ttemp={OPTIONS['temperature']}\tseed={seed}"
            f"\tartifact={artifact}\tbrief={brief!r}\tintent={intent!r}\n")
     try:
@@ -221,7 +228,7 @@ REPROBE_DAYS = 30  # model tags mutate; a PASS older than this is stale -> re-pr
 
 # A tiny PROSE artifact with TWO independent, blatant flaws — matched to the real use
 # case (these seats review DOCS). The capability SCORE = how many the seat NAMES (0-2):
-# a quantitative proxy that RANKS seats for the --select panel (a misrank only reorders
+# a quantitative proxy that RANKS seats for the panel (a misrank only reorders
 # the panel; the PASS gate stays binary, PASS = score >= 1). Each flaw's diagnosis words
 # are engineered ABSENT from the artifact (so an echo/summary scores 0) and use DISTINCT
 # vocab (compatibility vs testing) so the two are separately attributable.
@@ -444,62 +451,17 @@ def do_probe(cost_override, artifact_path="", expect=""):
     return 0 if passed else 1
 
 
-def do_select(top=3):
-    """Show the REMEMBERED panel (set by --configure) if present — the single source of
-    truth. Otherwise auto-derive a panel of up to `top` capable seats across DISTINCT
-    lineages (independence = diversity), ranked by score then free-first then recency;
-    paid seats flagged to confirm the spend."""
-    panel = read_panel()
-    if panel and panel.get("selected"):
-        print(f"REMEMBERED PANEL  ({_panel_path_read()}):")
-        for s in panel["selected"]:
-            spend = "" if s.get("cost") == "free" else "  [PAID — confirm the spend first]"
-            print(f"  · {s['model']}  [{s.get('lineage')}]  score {s.get('score', '?')}  {s.get('cost')}{spend}")
-        age = _panel_age_days(panel)
-        if age > REFRESH_DAYS:
-            print(f"  (chosen {age}d ago — run `--configure` to re-check for new models)")
-        print("Run each as a critic; fold every view in as a contested input. Re-pick with `--configure`.")
-        return 0
-    latest = latest_per_model(_registry_records())
-    if not latest:
-        print("no capability records yet. Run `--probe` against a different-lineage seat "
-              "first (see EXTERNAL_CRITIC.md -> Capability detection).")
-        return 1
-    capable = [r for r in latest.values()
-               if r.get("probe") == "PASS"
-               and r.get("lineage") not in ("claude", "anthropic", "unknown")]
-    if not capable:
-        print("no capable, different-lineage seat on record -> fall back to the in-harness "
-              "decorrelated-reviewer (same-lineage) and FLAG 'independence degraded.'")
-        print("Hunt a FREE+capable lineage: `--probe` each free option (local Ollama + "
-              "free-tier cloud), then re-run `--select`.")
-        return 1
-
-    def rank_key(r):                                # higher score, then free, then newer
-        return (_int(r.get("score")), r.get("cost") == "free", r.get("date", ""))
-
-    best = {}                                       # the best seat per DISTINCT lineage
-    for r in capable:
-        lin = r["lineage"]
-        if lin not in best or rank_key(r) > rank_key(best[lin]):
-            best[lin] = r
-    panel = sorted(best.values(), key=rank_key, reverse=True)[:top]
-
-    print(f"PANEL — up to {top} capable seats across DISTINCT lineages "
-          f"(independence = diversity; weight each by independence, not authority):")
-    for i, r in enumerate(panel, 1):
-        stale = "  ⚠ STALE — re-probe" if _stale(r.get("date", "")) else ""
-        spend = "" if r.get("cost") == "free" else "  [PAID — confirm the spend first]"
-        print(f"  {i}. {r['model']}  [{r['lineage']}]  score {r.get('score', '?')}  "
-              f"{r.get('cost')}{spend}{stale}")
-        print(f"     via {r.get('endpoint')}   (set as CRITIC_MODEL / critic-env)")
-    n_free = sum(1 for r in panel if r.get("cost") == "free")
-    print(f"\nRun each as a critic and fold every view in as a CONTESTED input. Use the "
-          f"{n_free} free seat(s) now; confirm the spend before any PAID seat.")
-    if len(panel) < 2:
-        print("(only one capable lineage on record — `--probe` more free options for real "
-              "decorrelation; a one-seat 'panel' is just a single external critic.)")
-    return 0
+def _suggest_panel(rows, top=3):
+    """Auto-rank candidate rows -> the best seat per DISTINCT lineage (independence =
+    diversity), by score then free-first, capped at `top`. This is the suggested default
+    --configure offers (Enter / --auto). rows are [lineage, model, endpoint, cost, score]."""
+    def key(r):
+        return (_int(r[4]), r[3] == "free")
+    best = {}
+    for r in rows:
+        if r[0] not in best or key(r) > key(best[r[0]]):
+            best[r[0]] = r
+    return sorted(best.values(), key=key, reverse=True)[:top]
 
 
 # --- Model discovery: don't hard-code a model — list what the KEY can serve --------
@@ -507,7 +469,7 @@ def do_select(top=3):
 # the endpoint's model list, drops non-chat ids, sorts newest-first (so a newer release
 # auto-surfaces), and annotates each with free|paid + its capability score (if probed).
 # No price API exists, so cost is the free/paid TIER, not dollars; you pick which paid
-# seats to probe + use (you pay per call), and `--select` flags paid before any spend.
+# seats to probe + use (you pay per call); `--configure` lists paid UNPROBED and `--panel` asks first.
 # Drop clearly-non-chat ids ONLY — by MODALITY, never by size. NOT "vision" (modern chat
 # models are multimodal — gpt-4-vision, llava), NOT "gemma" (a capable open chat model), and
 # NOT "nano" (a SIZE tier — gpt-5-nano / gpt-4.1-nano are real chat seats; nano-banana is
@@ -588,16 +550,16 @@ def do_discover():
     top = chat[0].replace("models/", "")
     print(f"\nlatest suitable -> {top}")
     print(f"  certify it:  CRITIC_MODEL={top} python3 {os.path.basename(__file__)} --probe")
-    print(f"  then panel:  python3 {os.path.basename(__file__)} --select")
+    print(f"  then pick:   python3 {os.path.basename(__file__)} --configure")
     if cost == "paid":
         print("  PAID endpoint: you pay per call — probe + use only the models you choose; "
-              "`--select` flags paid seats before any spend.")
+              "`--configure` lists paid UNPROBED and `--panel` asks before spending.")
     return 0
 
 
 # --- Remembered panel: the user's chosen 1-3 critics (single source of truth) ------
 # Resolution: a project-local ./.critic/critic_panel.json OVERRIDES the global one
-# (next to the registry) — no merge. --select reads it; --configure writes it; the
+# (next to the registry) — no merge. --panel reads it; --configure writes it; the
 # registry only supplies live scores. The project file is created ONLY by an explicit
 # `--configure --project`; NOTHING writes it at startup.
 PANEL_GLOBAL = _cfg("CRITIC_PANEL", os.path.join(_HERE, "critic_panel.json"))
@@ -665,44 +627,62 @@ def _provider_key(provider):
     return None
 
 
+def _key_for(prov, base):
+    """A provider's key: the OS secret store first, else the env CRITIC_API_KEY when `base`
+    is the ACTIVE provider (a live `critic-env`/export) — so a panel just works with the
+    key you already loaded. '' if none is reachable."""
+    key = (_provider_key(prov) if prov else "") or ""
+    if not key and API_KEY and base and base.rstrip("/") == (BASE_URL or "").rstrip("/"):
+        key = API_KEY
+    return key
+
+
 def _candidate_rows():
-    """[lineage, model, endpoint, cost, score] from the registry (PASS seats) + a FREE
-    discovery of each provider whose key is on this machine. Never probes (no paid call)."""
+    """Returns (table, seen, catalog). `table` = a BOUNDED grouped-by-lineage list for
+    browsing — [lineage, model, endpoint, cost, score]; `catalog` = {model: row} for EVERY
+    reachable seat (registry PASS + full free /models discovery per keyed provider) so
+    `--choose` can name any servable model, not just a displayed one. Never probes (no paid
+    call). Lineage is lower-cased so registry and discovery rows group as one lineage."""
     scored = latest_per_model(_registry_records())
-    seen, rows, listed = set(), [], set()
+    seen, table, listed, catalog = set(), [], set(), {}
     for r in scored.values():
         seen.add(r["model"])
         if r.get("probe") == "PASS" and r.get("lineage") not in ("claude", "anthropic"):
-            rows.append([r.get("lineage", "?"), r["model"], r.get("endpoint", ""),
-                         r.get("cost", "?"), str(r.get("score", "?"))])
-            listed.add(r["model"])
+            row = [(r.get("lineage") or "?").lower(), r["model"], r.get("endpoint", ""),
+                   r.get("cost", "?"), str(r.get("score", "?"))]
+            table.append(row); listed.add(r["model"]); catalog[r["model"]] = row
     for prov, (lineage, base) in PROVIDERS.items():
-        key = _provider_key(prov)
+        key = _key_for(prov, base)
         if not key:
             continue
         try:
             ids = _discover_at(base, key)              # free /models list, not a paid call
         except Exception:  # noqa: BLE001
             continue
-        for mid in sorted({i for i in ids if _suitable(i)}, key=lambda i: (_version(i), i), reverse=True)[:2]:
+        ranked = sorted({i for i in ids if _suitable(i)}, key=lambda i: (_version(i), i), reverse=True)
+        for n, mid in enumerate(ranked):
             name = mid.replace("models/", "")
             seen.add(name)
-            if name not in listed:
-                rows.append([lineage, name, base, "paid", "unprobed"])   # paid stays UNPROBED (consent-gated)
-                listed.add(name)
-    return rows, seen
+            row = [lineage.lower(), name, base, "paid", "unprobed"]   # paid stays UNPROBED (consent-gated)
+            catalog.setdefault(name, row)             # full catalog: --choose can name any servable model
+            if name not in listed and n < 4:          # top-4 per provider in the BROWSE table
+                table.append(row); listed.add(name)
+    return table, seen, catalog
 
 
-def do_configure(project, explicit):
-    """Check configured providers -> grouped-by-lineage table -> pick 1-3 -> remember.
-    Paid models are listed UNPROBED (no auto-spend); free/local scores come from the registry."""
+def do_configure(project, explicit, auto):
+    """PICK + REMEMBER your panel: configured providers -> grouped-by-lineage table -> pick
+    1-3 (or the score-ranked, free-first SUGGESTION via Enter / --auto) -> remember it. Paid
+    models are listed UNPROBED (no auto-spend); free/local scores come from the registry."""
     prior = read_panel()
-    rows, seen = _candidate_rows()
+    rows, seen, catalog = _candidate_rows()
     if not rows:
         print("nothing to choose yet — `--probe` a local seat or store a cloud key "
-              "(`critic_setup.py --install`), then re-run --configure.")
+              "(`critic_setup.py --install`), then re-run `--configure`.")
+        print("(meanwhile, fall back to same-lineage in-context critics — the Standard "
+              "preset's personas — and FLAG 'independence degraded'.)")
         return 1
-    if prior and not explicit:                          # keep-or-update + new-model flag
+    if prior and not explicit and not auto:             # keep-or-update + new-model flag
         cur = ", ".join(s["model"] for s in prior.get("selected", []))
         new = sorted(set(seen) - set(prior.get("seen", [])))
         print(f"current panel: {cur or '(empty)'}   (chosen {_panel_age_days(prior)}d ago)")
@@ -722,15 +702,25 @@ def do_configure(project, explicit):
         for r in by_lin[lin]:
             flat.append(r)
             print(f"    [{len(flat)}] {r[1]:34} {r[3]:5} score={r[4]}")
+    suggestion = _suggest_panel(rows)
+    sug = ",".join(str(flat.index(r) + 1) for r in suggestion)
+    print(f"  suggested (score-ranked, free-first, one per lineage): [{sug}] -> "
+          f"{', '.join(r[1] for r in suggestion)}")
 
     if explicit:
         want = [c.strip() for c in explicit.split(",") if c.strip()]
-        picks = [r for r in flat if r[1] in want]
+        picks = [catalog[m] for m in want if m in catalog]   # match the FULL catalog, not just the table
+    elif auto:
+        picks = suggestion
     elif sys.stdin.isatty():
-        idx = [int(x) for x in re.findall(r"\d+", input("\npick numbers (e.g. 1,3): "))]
-        picks = [flat[i - 1] for i in idx if 1 <= i <= len(flat)]
+        raw = input(f"\npick numbers (e.g. 1,3), or Enter for the suggested [{sug}]: ")
+        if not raw.strip():
+            picks = suggestion
+        else:
+            idx = [int(x) for x in re.findall(r"\d+", raw)]
+            picks = [flat[i - 1] for i in idx if 1 <= i <= len(flat)]
     else:
-        print('\nnon-interactive: pass `--configure --choose "model1,model2"` to choose. nothing saved.')
+        print('\nnon-interactive: pass `--choose "m1,m2"` or `--auto` (take the suggestion). nothing saved.')
         return 1
 
     if not 1 <= len(picks) <= 3:
@@ -743,7 +733,91 @@ def do_configure(project, explicit):
     path = write_panel(selected, seen, project)
     print(f"\n✓ saved {len(selected)}-critic panel -> {path}")
     for s in selected:
-        print(f"    {s['model']}  [{s['lineage']}]  {s['cost']}  score={s['score']}")
+        spend = "" if s["cost"] == "free" else "  [PAID — --panel asks before spending]"
+        print(f"    {s['model']}  [{s['lineage']}]  {s['cost']}  score={s['score']}{spend}")
+    print("Run it:  python3 external_critic.py <file> --panel")
+    return 0
+
+
+# --- Run the remembered panel: each chosen seat critiques; the skill synthesizes ----
+# --configure REMEMBERS a panel; --panel RUNS it. Local seats use native Ollama; a cloud
+# seat loads its provider's stored key (read-only) and is spend-gated. This script only
+# RUNS the seats — dedupe / preserve-list / contested (the synthesis) stays the skill's job.
+def _provider_for_endpoint(endpoint):
+    e = (endpoint or "").rstrip("/")
+    for prov, (_lin, base) in PROVIDERS.items():
+        if base.rstrip("/") == e:
+            return prov
+    return None
+
+
+def _seat_runtime(seat):
+    """A remembered seat -> (model, base_url, api_key). Native Ollama (base_url='') UNLESS
+    the endpoint is OpenAI-compatible — a known provider, a '/vN' path (a cloud base, or a
+    local server like LM Studio / vLLM on :1234/v1), or the active BASE_URL — in which case
+    it's called OpenAI-compat with that provider's key via _key_for. Classifying by endpoint
+    SHAPE (not 'localhost') is what lets a local /v1 server and a LAN Ollama both work."""
+    model = seat.get("model", "")
+    endpoint = seat.get("endpoint", "") or HOST
+    prov = _provider_for_endpoint(endpoint)
+    openai_compat = bool(prov) or bool(re.search(r"/v\d", endpoint)) or \
+        (bool(BASE_URL) and endpoint.rstrip("/") == BASE_URL.rstrip("/"))
+    if not openai_compat:
+        return model, "", ""          # native Ollama (call_model posts to HOST/api/chat)
+    return model, endpoint, _key_for(prov, endpoint)
+
+
+def do_panel(artifact_path, brief, intent, mode, depth, assume_yes):
+    """Run the REMEMBERED panel (--configure): critique the artifact with each chosen seat
+    and print every view as a CONTESTED input for the framework's spatial synthesis
+    (agreement = corroboration; a lone claim = contested — you are the reducer). Paid seats
+    are spend-gated: confirmed, --yes, or skipped (never an auto-spend)."""
+    panel = read_panel()
+    if not panel or not panel.get("selected"):
+        print("no remembered panel — run `--configure` to pick one (`--auto` for the suggested "
+              "default). `--panel` runs only a panel you chose.")
+        return 1
+    try:
+        art = sys.stdin.read() if artifact_path == "-" else open(artifact_path, encoding="utf-8").read()
+    except OSError as e:
+        sys.exit(f"cannot read {artifact_path}: {e}")
+    system = SYSTEM + (DEPTH_FULL if depth == "full" else "")
+    prompt = build_prompt(art, brief, intent, mode)
+    label_art = "<stdin>" if artifact_path == "-" else artifact_path
+    print(f"PANEL — {len(panel['selected'])} remembered seat(s) on {os.path.basename(label_art)}:")
+    ran = 0
+    for seat in panel["selected"]:
+        model, base_url, api_key = _seat_runtime(seat)
+        label = f"{model} [{seat.get('lineage', '?')}]"
+        if seat.get("cost") == "paid":
+            if not api_key:
+                prov = _provider_for_endpoint(seat.get("endpoint", "")) or "<provider>"
+                print(f"\n--- SKIP {label}: paid seat — no key stored. Enable it: "
+                      f"`critic_setup.py --provider {prov}` (stores the key), then re-run. ---")
+                continue
+            if not assume_yes:
+                if not sys.stdin.isatty():
+                    print(f"\n--- SKIP {label}: PAID seat, non-interactive (re-run with --yes to spend) ---")
+                    continue
+                if input(f"\nRun PAID seat {label}? this spends on your key [y/N] ").strip().lower() not in ("y", "yes"):
+                    print("  skipped.")
+                    continue
+        print(f"\n=== PANEL CRITIC: {label}  ({base_url or HOST}) ===")
+        try:
+            out = call_model(system, prompt, model=model, base_url=base_url, api_key=api_key)
+        except Exception as e:  # noqa: BLE001 — one dead seat must not sink the panel
+            print(f"(unavailable: {e})")
+            continue
+        print(out.strip())
+        log_run(label_art, mode, depth, brief, intent,
+                model=model, endpoint=(base_url or HOST), base_url=base_url)
+        ran += 1
+    if not ran:
+        print("\nno seat produced a critique (all skipped/unavailable). Check your keys, "
+              "Ollama, or `--configure`.")
+        return 1
+    print(f"\n=== {ran} seat(s) ran. SYNTHESIZE (don't average): agreement across seats is strong "
+          "corroboration; a lone claim is a CONTESTED point to weigh — you are the reducer. ===")
     return 0
 
 
@@ -763,15 +837,14 @@ def main():
     ap.add_argument("--probe", action="store_true",
                     help="capability probe (availability != capability): SCORE the seat on a "
                          "tiny multi-flaw artifact (PASS = score>=1); records it in the registry")
-    ap.add_argument("--select", action="store_true",
-                    help="build a PANEL of up to 3 capable seats across distinct lineages "
-                         "(ranked by score, free-first) from the capability registry")
     ap.add_argument("--discover", action="store_true",
                     help="list the models this key/endpoint can serve (newest-first), with "
                          "cost tier + capability score — don't hard-code a model")
     ap.add_argument("--configure", action="store_true",
-                    help="check configured providers -> grouped-by-lineage table -> pick 1-3 -> "
-                         "REMEMBER the panel (keep/update + flags new models)")
+                    help="PICK + REMEMBER your panel: configured providers -> grouped table -> "
+                         "pick 1-3 (or --auto for the suggested default); flags new models")
+    ap.add_argument("--auto", action="store_true",
+                    help="with --configure: accept the suggested (score-ranked, free-first) panel")
     ap.add_argument("--project", action="store_true",
                     help="with --configure: save the panel project-locally (./.critic/) not globally")
     ap.add_argument("--choose", default="",
@@ -781,18 +854,25 @@ def main():
     ap.add_argument("--expect", default="",
                     help='for a faithful `--probe FILE`: comma-separated word(s) a '
                          "genuine critic must say when it finds the flaw you planted")
+    ap.add_argument("--panel", action="store_true",
+                    help="run the REMEMBERED panel (--configure) against the artifact: each "
+                         "chosen seat critiques; paid seats spend-gated (--yes to allow)")
+    ap.add_argument("--yes", action="store_true",
+                    help="with --panel: run PAID seats without the per-seat spend confirm")
     args = ap.parse_args()
 
     if args.configure:
-        sys.exit(do_configure(args.project, args.choose))
+        sys.exit(do_configure(args.project, args.choose, args.auto))
     if args.discover:
         sys.exit(do_discover())
     if args.probe:
         sys.exit(do_probe(args.cost, args.artifact or "", args.expect))
-    if args.select:
-        sys.exit(do_select())
+    if args.panel:
+        if not args.artifact:
+            ap.error("--panel needs an artifact path (or '-' for stdin)")
+        sys.exit(do_panel(args.artifact, args.brief, args.intent, args.mode, args.depth, args.yes))
     if not args.artifact:
-        ap.error("artifact is required (or pass --configure / --discover / --probe / --select)")
+        ap.error("artifact is required (or pass --configure / --discover / --probe / --panel)")
 
     if args.artifact == "-":
         text = sys.stdin.read()

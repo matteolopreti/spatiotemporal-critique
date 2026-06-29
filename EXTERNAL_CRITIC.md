@@ -41,20 +41,21 @@ So the helper applies its own discipline — the **planted defect** — to the c
 ```bash
 python3 external_critic.py --probe                 # FLOOR probe — scored 0..N (built-in artifact)
 python3 external_critic.py --probe FILE --expect "contradict,inconsistent,false"   # FAITHFUL probe
-python3 external_critic.py --select                # PANEL: top capable seats, distinct lineages
+python3 external_critic.py --configure             # PICK 1-3 across lineages and REMEMBER them (--auto for the suggestion)
+python3 external_critic.py draft.md --panel        # RUN the remembered panel (each seat critiques)
 ```
 
 - **Floor probe (`--probe`, default) — now scored.** Feeds the configured seat a tiny artifact with **two independent, blatant flaws** (a contradiction + an impossible number) and returns a **capability SCORE = how many it NAMES** (0..N) with a **deterministic, non-LLM** grader. Because diagnosis vocabulary is open-ended, the grader doesn't match per-flaw wordlists (that false-missed capable seats); a flaw is *named* when some sentence — or an adjacent pair — pairs that flaw's **subject anchor** with any **fault word**, so a restating summary scores 0. A `<think>…</think>` block is stripped so the *answer* is graded. **PASS = score ≥ 1** (genuine critique) · **score = 0 → FAIL** (a null seat) · **UNAVAILABLE** = it never answered (unreachable, or a stale id — the `…-preview` 400). The score *ranks* the panel; a misrank only reorders (cheap), so the gate stays binary.
 - **Faithful probe (`--probe FILE --expect "…"`).** The floor probe is *necessary, not sufficient*: capability is **artifact-dependent**. `gpt-oss` passes the tiny probe yet summarized a multi-section governance bundle — a tiny probe can't predict a large/abstract one. So for high-stakes work, plant **one** known flaw in a *slice of your real artifact* and name the word(s) a genuine critic must say (`--expect`, multi-word phrases allowed); the grader checks the seat caught it. This is the rung that catches **scale/abstraction-induced** nulling.
 - **Registry (`critic_registry.tsv`, next to `critique.log`).** Every probe appends `{date · model · lineage · probe · score · cost · note}`; the **newest record per model** wins, so a capable seat is reused, not re-probed — and a PASS older than ~30 days is flagged **stale** (tags mutate; re-probe). Gitignored, per-machine.
-- **Panel (`--select`).** Builds a panel of up to **3 capable seats across DISTINCT lineages** — independence is *diversity* (three of one family share a blind spot), so it takes the best-scoring seat per lineage, ranked by score then **free-first**. Free seats are usable now; a **paid** seat is flagged *"confirm the spend first"* (never auto-spent). None capable → fall back to the in-harness same-lineage reviewer, **flagged "independence degraded."** Hunt more **free + capable** lineages by probing each free option (local Ollama + free-tier cloud); the panel widens as you do. Run each panel member as a critic and fold every view in as a *contested* input.
+- **Panel (`--configure` → `--panel`).** `--configure` builds a panel of up to **3 capable seats across DISTINCT lineages** — independence is *diversity* (three of one family share a blind spot) — so it groups candidates by lineage and **suggests** the best-scoring seat per lineage, **free-first** (accept with Enter or `--auto`; or pick your own 1–3). Free seats are usable now; a **paid** seat is listed UNPROBED and **`--panel` asks before spending** (never auto-spent). None capable → fall back to a same-lineage in-context reviewer (the Standard preset's personas, or a host harness's `decorrelated-reviewer`), **flagged "independence degraded."** Hunt more **free + capable** lineages by probing each free option (local Ollama + free-tier cloud); the panel widens as you do. Then **`--panel <file>`** runs every remembered seat and prints each view as a *contested* input for synthesis.
 - **A normal critique run** prints a one-line **advisory** when the chosen model has no capability-PASS on record (or a stale one) — non-blocking; it nudges you to `--probe` first.
 
 **The boundary that does not move.** A PASS certifies the seat **genuinely critiques** — it improves the *read*. It does **not** grant authority over whether the *goal* is right: that residual is the user's, and no seat (capable or not) can take it. Auto-**excluding** a null seat is legitimate because the grader is a *different substrate* (deterministic, not an LLM judgment); **trusting** a seat's verdict is still weighted by independence, never authority (Mandate 3 governs). And the floor probe's own residual — a seat that passes small yet nulls large — is why the seat stays advisory and **you still read its first real critique.**
 
 ## Setup & test
 
-**Guided, cross-platform (recommended):** `critic_setup.py` detects your OS, shell, and RAM and prints a tailored, copy-pasteable setup — the best local Ollama model for your RAM, *or* safe key storage + a `critic-env` snippet for *your* shell. Detection + guidance only: it stores nothing, installs nothing, and pulls nothing on its own.
+**Guided, cross-platform (recommended):** `critic_setup.py` detects your OS, shell, and RAM and prints a tailored, copy-pasteable setup — the best local Ollama model for your RAM, *or* safe key storage + a `critic-env` snippet for *your* shell. Detection + guidance only: it stores nothing, installs nothing, and pulls nothing on its own. (Opt-in: `critic_setup.py --install` *appends* the `critic-env` function to your shell rc — consent-gated, idempotent, one upfront prompt; `--yes` for non-interactive.)
 
 ```bash
 python3 critic_setup.py                      # local Ollama (free) — picks a model for your RAM
@@ -64,21 +65,38 @@ python3 critic_setup.py --provider openai    #   or  google | deepseek | glm | m
 # certify a seat really critiques, discover what a cloud key can serve, then build the panel:
 python3 external_critic.py --probe                          # SCORE this seat (0..N); PASS = >=1
 python3 external_critic.py --discover                       # (cloud) models this key can serve, newest-first + score
-python3 external_critic.py --select                         # panel: capable seats across distinct lineages
+python3 external_critic.py --configure                      # PICK 1-3 across lineages and REMEMBER them (critic_panel.json; --auto for the suggestion)
 
 # run a review (add --depth full for a rationale per finding on high-stakes work):
 python3 external_critic.py path/to/draft.md --brief "focus here" --mode correctness
+python3 external_critic.py path/to/draft.md --panel         # OR run the whole remembered panel; paid seats spend-gated
 ```
 
 *(`setup.sh` remains a bash-only quick path for local Ollama; `critic_setup.py` is the cross-platform superset.)* `external_critic.py` logs the model + sampling params on every run (`critique.log`, next to the helper; `--no-log` to skip) so a review is auditable. (`seed` is logged for local Ollama where it's honored; cloud logs `na`.)
+
+## Optional — a read-only status line for an integrating project
+
+Wiring this skill into a larger project (one with its own `.claude/`)? You can surface critic status at session start **without the skill installing anything** — keep it read-only (no writes, no network at startup). The skill ships the tools (`--configure`, `--install`, `--panel`); the host project decides whether to advertise them. A `SessionStart` hook body:
+
+```bash
+if [ -f .critic/critic_panel.json ]; then       # set by `external_critic.py --configure --project`
+  echo "External critic: project panel set — run \`external_critic.py <file> --panel\`."
+else
+  echo "External critic (optional): \`critic_setup.py --install\` sets it up (it asks first)."
+fi
+```
+
+This is a *consumer* concern: **the skill itself registers no hooks.** A project `./.critic/` panel overrides the global one (no merge), so per-project critics stay isolated.
 
 ## Cloud routing — and keeping the key out of your shell history
 
 The skill is **not tied to any one vendor** — it's about *your* key. Cloud mode is fully env-driven: set `CRITIC_BASE_URL` (+ `CRITIC_API_KEY` for keyed endpoints) for *whichever* provider you have — OpenAI, Google, DeepSeek, GLM, Mistral, or **Ollama Cloud** (see the lineage map above). `critic_setup.py --provider <name>` prints the right block for your shell; this is the generic form. The trap is the **key**: an inline `export CRITIC_API_KEY=sk-…` lands in your shell history, and `.env` lands it on disk. Store it once in your OS secret store and load it *only for the run*:
 
 ```bash
-# store EACH provider's key once (prompts; nothing on a dotfile or in history) — a PER-PROVIDER item,
-# so OpenAI + Google + … coexist (`critic_setup.py --provider <x>` prints the exact command):
+# store EACH provider's key once (prompts; nothing on a dotfile or in history) — a PER-PROVIDER item
+# named  critic-api-key-<PROVIDER>  (PROVIDER = the arg to critic-env / --provider: google, openai, …),
+# NOT by lineage: one provider key serves several lineages (the google key serves gemini AND gemma).
+# So OpenAI + Google + … coexist (`critic_setup.py --provider <x>` prints the exact command):
 #   macOS:  security add-generic-password -s critic-api-key-google -a "$USER" -w
 #   Linux:  secret-tool store --label=critic-api-key-google service critic-api-key-google   # or use `pass`
 #   Windows: [Environment]::SetEnvironmentVariable("CRITIC_API_KEY_GOOGLE",(Read-Host "key"),"User")  # PowerShell;
@@ -106,7 +124,7 @@ python3 external_critic.py --probe                                 # certify the
 python3 external_critic.py draft.md --mode correctness             # run a review (--depth full for rationale)
 ```
 
-**Two keys (e.g. OpenAI + Google)? Both are recognized.** Store each under its own item (`critic-api-key-openai`, `critic-api-key-google`), then `critic-env openai` → `--probe` a model, `critic-env google` → `--probe` a model. The registry keeps every capable seat across providers, and `--select` builds **one panel spanning all your distinct lineages** — that diversity *is* the decorrelation the panel is for.
+**Two keys (e.g. OpenAI + Google)? Both are recognized.** Store each under its own item (`critic-api-key-openai`, `critic-api-key-google`), then `critic-env openai` → `--probe` a model, `critic-env google` → `--probe` a model. The registry keeps every capable seat across providers, and `--configure` builds **one panel spanning all your distinct lineages** — that diversity *is* the decorrelation the panel is for.
 
 Don't hard-code a model — `--discover` lists what the key serves, newest-first, so a new release auto-surfaces and you choose by score and free/paid. The key lives only in the secret store and in this one shell's env — never in a file or your history. The helper omits request fields strict OpenAI-compat shims reject (e.g. `seed`) and surfaces the endpoint's own error text if a request is refused.
 
