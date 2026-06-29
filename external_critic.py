@@ -480,6 +480,99 @@ def do_select(top=3):
     return 0
 
 
+# --- Model discovery: don't hard-code a model — list what the KEY can serve --------
+# A given key exposes many models; the right one changes monthly. `--discover` queries
+# the endpoint's model list, drops non-chat ids, sorts newest-first (so a newer release
+# auto-surfaces), and annotates each with free|paid + its capability score (if probed).
+# No price API exists, so cost is the free/paid TIER, not dollars; you pick which paid
+# seats to probe + use (you pay per call), and `--select` flags paid before any spend.
+# Drop clearly-non-chat ids ONLY — by MODALITY, never by size. NOT "vision" (modern chat
+# models are multimodal — gpt-4-vision, llava), NOT "gemma" (a capable open chat model), and
+# NOT "nano" (a SIZE tier — gpt-5-nano / gpt-4.1-nano are real chat seats; nano-banana is
+# already caught by "banana"). Excluding any of these would hide valid seats.
+_NONCHAT = ("embed", "imagen", "image", "dall-e", "tts", "audio", "whisper", "banana", "rerank",
+            "moderation", "guard", "robotic", "computer-use", "aqa", "-live", "diffusion",
+            "veo", "speech", "transcrib", "lyria", "music")
+
+
+def _suitable(model_id):
+    m = model_id.lower()
+    return bool(m) and not any(b in m for b in _NONCHAT)
+
+
+def _strip_dates(s):
+    """Drop date suffixes so they're not mistaken for versions (a model id like
+    '…-preview-12-2025' must not parse as v12, out-ranking gemini-3.5)."""
+    s = re.sub(r"[-_]\d{1,2}[-_]\d{4}\b", "", s)   # -MM-YYYY
+    s = re.sub(r"[-_]\d{6,8}\b", "", s)            # -YYYYMM(DD)
+    return re.sub(r"[-_]\d{4}\b", "", s)           # -YYYY
+
+
+def _version(model_id):
+    """Sort key: (major, minor). Handles 'x.y' and single-int 'gemini-3-pro'; date
+    suffixes are stripped first; bare aliases ('*-latest') -> (0,0), sorted last."""
+    s = _strip_dates(model_id)
+    mt = re.search(r"(\d+)\.(\d+)", s)
+    if mt:
+        return (int(mt.group(1)), int(mt.group(2)))
+    ms = re.search(r"[-_](\d+)(?:[-_]|$)", s)
+    if ms:
+        return (int(ms.group(1)), 0)
+    mf = re.search(r"\d+", s)              # last resort: first digit (gpt-4o -> 4, deepseek-r1 -> 1)
+    return (int(mf.group(0)), 0) if mf else (0, 0)
+
+
+def discover_models():
+    """Model ids the configured key/endpoint can serve. OpenAI-compat: GET /models;
+    local Ollama: GET /api/tags."""
+    if BASE_URL:
+        url = f"{BASE_URL.rstrip('/')}/models"
+        headers = {"Authorization": f"Bearer {API_KEY}"} if API_KEY else {}
+        req = urllib.request.Request(url, headers=headers)
+        data = json.loads(urllib.request.urlopen(req, timeout=20).read())
+        return [m.get("id", "") for m in data.get("data", [])]
+    url = f"{HOST}/api/tags"
+    data = json.loads(urllib.request.urlopen(url, timeout=20).read())
+    return [m.get("name", "") for m in data.get("models", [])]
+
+
+def do_discover():
+    """List suitable models for this key, newest-first, with cost tier + probe score."""
+    cost = infer_cost(BASE_URL, API_KEY, "")
+    try:
+        ids = discover_models()
+    except Exception as e:  # noqa: BLE001
+        if BASE_URL:
+            sys.exit(f"discover failed ({e}). Check CRITIC_BASE_URL ({BASE_URL}) and CRITIC_API_KEY.")
+        sys.exit(f"discover failed ({e}). Is Ollama running? Try `ollama serve`.")
+    chat = sorted({i for i in ids if _suitable(i)}, key=lambda i: (_version(i), i), reverse=True)
+    if not chat:
+        print(f"no suitable chat models found at {ENDPOINT} ({len(ids)} total returned).")
+        return 1
+    scored = latest_per_model(_registry_records())
+    print(f"DISCOVERED {len(chat)} suitable chat models at {ENDPOINT}  (newest-first · cost={cost}):")
+    for i in chat:
+        name = i.replace("models/", "")
+        rec = scored.get(name) or scored.get(i)
+        if rec and rec.get("probe") == "PASS":
+            mark = f"score {rec.get('score', '?')}"
+        elif rec and rec.get("probe") in ("FAIL", "UNAVAILABLE"):
+            mark = rec["probe"].lower()
+        else:
+            mark = "unprobed"
+        v = _version(i)
+        vtag = f"v{v[0]}.{v[1]}" if v != (0, 0) else "—"
+        print(f"  {name:44} {vtag:6} {cost:4}  {mark}")
+    top = chat[0].replace("models/", "")
+    print(f"\nlatest suitable -> {top}")
+    print(f"  certify it:  CRITIC_MODEL={top} python3 {os.path.basename(__file__)} --probe")
+    print(f"  then panel:  python3 {os.path.basename(__file__)} --select")
+    if cost == "paid":
+        print("  PAID endpoint: you pay per call — probe + use only the models you choose; "
+              "`--select` flags paid seats before any spend.")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Independent critique via local Ollama or an OpenAI-compatible endpoint.")
@@ -499,6 +592,9 @@ def main():
     ap.add_argument("--select", action="store_true",
                     help="build a PANEL of up to 3 capable seats across distinct lineages "
                          "(ranked by score, free-first) from the capability registry")
+    ap.add_argument("--discover", action="store_true",
+                    help="list the models this key/endpoint can serve (newest-first), with "
+                         "cost tier + capability score — don't hard-code a model")
     ap.add_argument("--cost", choices=["free", "paid"], default="",
                     help="override the inferred cost label recorded by --probe")
     ap.add_argument("--expect", default="",
@@ -506,12 +602,14 @@ def main():
                          "genuine critic must say when it finds the flaw you planted")
     args = ap.parse_args()
 
+    if args.discover:
+        sys.exit(do_discover())
     if args.probe:
         sys.exit(do_probe(args.cost, args.artifact or "", args.expect))
     if args.select:
         sys.exit(do_select())
     if not args.artifact:
-        ap.error("artifact is required (or pass --probe / --select)")
+        ap.error("artifact is required (or pass --discover / --probe / --select)")
 
     if args.artifact == "-":
         text = sys.stdin.read()

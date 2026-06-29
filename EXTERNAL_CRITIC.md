@@ -54,47 +54,52 @@ python3 external_critic.py --select                # PANEL: top capable seats, d
 
 ## Setup & test
 
+**Guided, cross-platform (recommended):** `critic_setup.py` detects your OS, shell, and RAM and prints a tailored, copy-pasteable setup — the best local Ollama model for your RAM, *or* safe key storage + a `critic-env` snippet for *your* shell. Detection + guidance only: it stores nothing, installs nothing, and pulls nothing on its own.
+
 ```bash
-# one-time, guided setup (installs nothing unless you pass --install)
-chmod +x setup.sh external_critic.py
-./setup.sh
+python3 critic_setup.py                      # local Ollama (free) — picks a model for your RAM
+python3 critic_setup.py --provider list      # the cloud providers (each a different lineage)
+python3 critic_setup.py --provider openai    #   or  google | deepseek | glm | mistral | ollama-cloud
 
-# run it on a real file (add --depth full for a rationale per finding on high-stakes work)
+# certify a seat really critiques, discover what a cloud key can serve, then build the panel:
+python3 external_critic.py --probe                          # SCORE this seat (0..N); PASS = >=1
+python3 external_critic.py --discover                       # (cloud) models this key can serve, newest-first + score
+python3 external_critic.py --select                         # panel: capable seats across distinct lineages
+
+# run a review (add --depth full for a rationale per finding on high-stakes work):
 python3 external_critic.py path/to/draft.md --brief "focus here" --mode correctness
-
-# for code review, point at a current code model of a different lineage
-# (verify the tag on ollama.com/library — these move monthly):
-CRITIC_MODEL=qwen3-coder ./setup.sh
-
-# or route to a hosted, different-lineage model — see "Cloud routing" below
-# (the artifact leaves your machine, and the key must stay out of your history).
 ```
 
-`setup.sh` writes its pick to `.env` for the helper and asks before any pull; `external_critic.py` logs the model and sampling params used on every run (`critique.log`, next to the helper; `--no-log` to skip) so a review is auditable. (`seed` is logged for local Ollama, where it's honored; cloud endpoints don't take it, so it logs as `na`.)
+*(`setup.sh` remains a bash-only quick path for local Ollama; `critic_setup.py` is the cross-platform superset.)* `external_critic.py` logs the model + sampling params on every run (`critique.log`, next to the helper; `--no-log` to skip) so a review is auditable. (`seed` is logged for local Ollama where it's honored; cloud logs `na`.)
 
 ## Cloud routing — and keeping the key out of your shell history
 
-Cloud mode is fully env-driven: set `CRITIC_BASE_URL` (+ `CRITIC_MODEL`, and `CRITIC_API_KEY` for keyed endpoints) and the same helper routes there. The trap is the **key**: an inline `export CRITIC_API_KEY=sk-…` lands in your shell history, and putting it in `.env` lands it on disk. Store it once in your OS secret store and load it into the env *only for the run*:
+The skill is **not tied to any one vendor** — it's about *your* key. Cloud mode is fully env-driven: set `CRITIC_BASE_URL` (+ `CRITIC_API_KEY` for keyed endpoints) for *whichever* provider you have — OpenAI, Google, DeepSeek, GLM, Mistral, or **Ollama Cloud** (see the lineage map above). `critic_setup.py --provider <name>` prints the right block for your shell; this is the generic form. The trap is the **key**: an inline `export CRITIC_API_KEY=sk-…` lands in your shell history, and `.env` lands it on disk. Store it once in your OS secret store and load it *only for the run*:
 
 ```bash
-# store the key once (prompts; nothing written to a dotfile or to history):
-#   macOS:  security add-generic-password -s gemini-critic-key -a "$USER" -w
-#   Linux:  secret-tool store --label=gemini-critic-key service gemini-critic-key   # or use `pass`
+# store the key once (prompts; nothing written to a dotfile or to history) — a GENERIC item name:
+#   macOS:  security add-generic-password -s critic-api-key -a "$USER" -w
+#   Linux:  secret-tool store --label=critic-api-key service critic-api-key      # or use `pass`
+#   Windows: a User env var the PowerShell critic-env reads back — set it via System Properties
+#            (Environment Variables) for no history, or `setx CRITIC_API_KEY "<key>"`. NOT cmdkey
+#            (Credential Manager isn't read by the flow). `critic_setup.py --provider <x>` prints it.
 
-# a reusable shell function (in ~/.zshrc) that loads endpoint + key just-in-time:
+# a reusable shell function (in your shell rc) that loads endpoint + key just-in-time.
+# Pick YOUR provider's base URL (critic_setup.py --provider list shows them):
 critic-env() {                                  # usage: critic-env [model]
-  export CRITIC_BASE_URL="https://generativelanguage.googleapis.com/v1beta/openai"
-  export CRITIC_MODEL="${1:-gemini-3.1-pro-preview}"
-  export CRITIC_API_KEY="$(security find-generic-password -s gemini-critic-key -w 2>/dev/null)"
-  #   Linux: CRITIC_API_KEY="$(secret-tool lookup service gemini-critic-key)"
-  [ -n "$CRITIC_API_KEY" ] && echo "critic-env ready: $CRITIC_MODEL" || echo "WARN: key not in keychain" >&2
+  export CRITIC_BASE_URL="<your-provider-base-url>"     # e.g. https://api.openai.com/v1
+  export CRITIC_MODEL="${1:-}"                          # leave empty -> --discover picks the latest
+  export CRITIC_API_KEY="$(security find-generic-password -s critic-api-key -w 2>/dev/null)"
+  #   Linux: CRITIC_API_KEY="$(secret-tool lookup service critic-api-key)"
+  [ -n "$CRITIC_API_KEY" ] && echo "critic-env ready" || echo "WARN: key not in keychain" >&2
 }
 
-critic-env                                                            # load for this shell
-python3 external_critic.py draft.md --mode correctness               # terse (default)
-python3 external_critic.py draft.md --mode correctness --depth full  # +rationale, high-stakes
+critic-env                                                          # load for this shell
+python3 external_critic.py --discover                              # which models can this key serve? (newest-first)
+python3 external_critic.py --probe                                 # certify the one you pick
+python3 external_critic.py draft.md --mode correctness             # run a review (--depth full for rationale)
 ```
 
-Swap the base URL and key item per vendor (see the lineage map above). The key then lives only in the secret store and in this one shell's env — never in a file or your history. The helper sends only widely-supported request fields on this path (e.g. it omits `seed`, which strict OpenAI-compat shims like Gemini's reject), and surfaces the endpoint's own error text if a request is refused.
+Don't hard-code a model — `--discover` lists what the key serves, newest-first, so a new release auto-surfaces and you choose by score and free/paid. The key lives only in the secret store and in this one shell's env — never in a file or your history. The helper omits request fields strict OpenAI-compat shims reject (e.g. `seed`) and surfaces the endpoint's own error text if a request is refused.
 
 For a **published skill**, automate *detection and guidance*, not silent installation: when the user turns the reviewer on, run the preflight; if Ollama isn't ready, report the one command (`./setup.sh`) and the approximate download size, and leave installing/pulling to explicit consent. Never silently install software or pull multi-GB models on a user's machine.
