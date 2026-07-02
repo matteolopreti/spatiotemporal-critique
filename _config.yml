@@ -5,3 +5,18 @@ image: /assets/social-preview.png
 plugins:
   - jekyll-sitemap          # emits sitemap.xml + robots.txt (GH Pages safelisted)
   - jekyll-relative-links   # rewrites .md links to .html so SKILL.md links work on Pages
+
+# Keep the published site to just the docs. Everything below is repo tooling and
+# evaluation data — not website content — and copying it all into _site (the
+# trials/ tree alone is ~350 files) was overrunning the Pages deploy backend
+# ("Deployment failed, try again later"). The docs reference these paths only as
+# code spans for local use, never as site links, so excluding them breaks nothing.
+exclude:
+  - trials/            # committed critic-trial fixtures + raw model responses (re-scored locally via trial_runner.py)
+  - skills/            # path-adapted plugin mirror of SKILL.md (root SKILL.md stays canonical)
+  - .claude-plugin/    # marketplace/plugin manifests
+  - critic_providers.py
+  - critic_setup.py
+  - external_critic.py
+  - trial_runner.py
+  - setup.sh
