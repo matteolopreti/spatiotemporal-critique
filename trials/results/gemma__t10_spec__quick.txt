@@ -1,0 +1,21 @@
+1. **What's working here that must be preserved?**
+The core architectural components (Gateway, Scheduler, Worker Pool, Result Store) provide a standard, robust foundation for distributed job processing. The inclusion of a lease mechanism is critical for ensuring "at-least-once" delivery and preventing multiple workers from processing the same job simultaneously in a distributed environment.
+
+2. **Steelman the current choices — where might they already be right?**
+The requirement that the Worker Pool be available before the API Gateway starts is a "fail-fast" design. By validating handler names during boot, the system prevents a scenario where an operator deploys a broken configuration that would otherwise only be discovered when a specific (and perhaps rare) job type is triggered.
+
+3. **State what the author is actually trying to achieve, as a specific consequential claim.**
+The author is attempting to build a production-grade, self-healing batch processing system that guarantees integrity by enforcing strict validation of work types before accepting any traffic, while ensuring no jobs are lost or double-processed via a lease/heartbeat model.
+
+4. **List the assumptions you're making where things are unspecified, and what breaks if each is wrong.**
+*   **Assumption:** The "Worker Pool" exposes a reachable registry of valid handlers during boot. *If wrong:* The API Gateway will fail to start because it cannot reach the worker metadata.
+*   **Assumption:** The "Result Store" supports atomic updates/comparisons for lease ownership (e.g., `UPDATE ... WHERE owner = X`). *If wrong:* Two workers could successfully "claim" the same job simultaneously due to race conditions.
+*   **Assumption:** The "Scheduler" and "API Gateway" are independent processes. *If wrong:* If they share a runtime, the startup sequence logic becomes moot.
+
+5. **The 3 highest-leverage issues only.**
+*   [Severity High] **Circular/Contradictory Startup Dependency:** The text states the API Gateway must come online first, but then requires the Worker Pool to be available before the Gateway starts. This creates a deployment deadlock. *Fix: Decouple validation from boot; allow the Gateway to start and validate handlers dynamically upon job submission.*
+*   [Severity High] **Conflicting Lease Timeouts:** The text defines `scheduler_lease_timeout` as 30 seconds in one paragraph and 30 minutes in another. *Fix: Standardize on a single configuration value (likely 30 minutes for batch processing).*
+*   [Severity Med] **Lease/Processing Time Mismatch:** A 30-second lease timeout is extremely short for "batch processing." If a job takes 60 seconds to run, it will be stolen by another worker while still active. *Fix: Ensure the default `scheduler_lease_timeout` is significantly higher than the expected maximum execution time of a standard batch job.*
+
+6. **Verdict: is this genuinely better than leaving it as is?**
+No. The current specification contains a logical deadlock regarding startup order and contradictory timeout values that would cause the system to fail during deployment or result in immediate data corruption/duplicate processing.

@@ -1,0 +1,10 @@
+1. PRESERVE
+- The return dictionary structure (data + pagination metadata).
+- The logic for `has_previous` and `has_next` based on the current page and total pages.
+
+2. ISSUES
+- [severity high] Off-by-one error in slicing: `start = ((page - 1) * size) + 1` calculates the second element as the start of the first page (since Python lists are 0-indexed). Fix: Change to `start = (page - 1) * size`.
+- [severity high] Violation of "never raises" contract: If `size` is 0, the code will raise a `ZeroDivisionError` during the `total_pages` calculation. Fix: Add `size = max(1, size)` at the start of the function.
+- [severity med] Logic flaw on empty collections: When `items` is empty, `total_pages` becomes 0. The check `if total_pages and page > total_pages` will skip the boundary correction because `0` is falsy. Fix: Use `if total_pages > 0 and page > total_pages:` or calculate `total_pages = max(1, (total + size - 1) // size)`.
+
+VERDICT — Not good as-is; it contains a fundamental indexing bug that will cause the API to skip the first item of every result set.

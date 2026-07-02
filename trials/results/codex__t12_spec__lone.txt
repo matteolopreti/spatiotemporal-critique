@@ -1,0 +1,31 @@
+[severity high] Retry state is unspecified — persist attempt count, first-seen deadline, next-attempt time, last error, and DLQ status in the queue/message metadata or a delivery store so crashes do not reset retries or lose the 24-hour cutoff.
+
+[severity high] Queue lease/visibility semantics are missing — set a visibility timeout longer than the HTTP timeout plus processing margin, and renew or fail explicitly to avoid concurrent duplicate attempts.
+
+[severity high] Idempotency key stability is ambiguous — define `X-Relay-Id` as the same value for every retry of the same logical event, not a fresh value per attempt.
+
+[severity high] Signing is under-specified — define the signature algorithm, signed fields, canonical payload bytes, timestamp/nonce, replay window, header names, and secret rotation behavior.
+
+[severity med] Retry intervals omit units for `1, 2, 4, 8` — specify seconds or minutes explicitly, e.g. `1s, 2s, 4s, 8s`, capped at 15 minutes.
+
+[severity med] Exponential backoff has no jitter — add bounded jitter to avoid synchronized retry storms after endpoint or network recovery.
+
+[severity med] HTTP failure classification is incomplete — define behavior for timeout, DNS/TLS/connect errors, redirects, 3xx, 4xx, 429, and 5xx responses.
+
+[severity med] No per-attempt timeout is defined — set connect and total request timeouts so workers cannot hang indefinitely.
+
+[severity med] Ordering is not addressed — state that ordering is not guaranteed, or partition/serialize by subscriber and ordering key if customers depend on event order.
+
+[severity med] Scaling via consumer groups can starve tenants or endpoints — add per-subscriber concurrency limits and fairness so one slow or failing customer does not consume all workers.
+
+[severity med] DLQ replay semantics are vague — define whether replay preserves the original `X-Relay-Id`, resets retry deadlines, records operator identity, and prevents accidental replay floods.
+
+[severity med] Object-storage references are underspecified — require immutable object versions, expiry/access rules, checksum, size, content type, and include the reference metadata in the signed payload.
+
+[severity low] Startup order is not a correctness guarantee — replace it with readiness checks and dependency health checks for broker connectivity, config, credentials, and schema compatibility.
+
+[severity low] Payload size cap lacks serialization detail — define whether 256 KB applies before or after encoding/compression and whether headers are included.
+
+[severity low] Subscriber URL validation is missing — require HTTPS, reject private/internal address ranges unless explicitly allowed, and validate URL changes before delivery.
+
+VERDICT — don't ship, because core delivery correctness depends on retry persistence, queue lease behavior, stable idempotency, and precise signing semantics that are not yet specified.

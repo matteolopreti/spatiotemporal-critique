@@ -1,0 +1,21 @@
+1. What's working here that must be preserved?
+The separation of concerns between data processing (`top_scores`) and presentation (`format_leaderboard`) is a good architectural choice. The function signatures are intuitive and the docstring clearly communicates the intended behavior (a pure, side-effect-free ranking system).
+
+2. Steelman the current choices — where might they already be right?
+The inclusion of a `seen` parameter suggests an attempt to optimize for performance by caching results across multiple calls. If the input `scores` list were massive and only changed slightly between updates, maintaining a persistent state could theoretically reduce the work required to find the top scores compared to re-processing the entire raw dataset every time.
+
+3. State what the author is actually trying to achieve, as a specific consequential claim.
+The author is attempting to provide a reliable, pure utility for extracting and formatting a leaderboard of high scores from a raw data source without mutating the original input.
+
+4. List the assumptions you're making where things are unspecified, and what breaks if each is wrong.
+*   **Assumption:** The `scores` list contains comparable numeric types (int/float). *Break:* If the list contains mixed types or non-comparable objects, `seen.sort()` will raise a `TypeError`.
+*   **Assumption:** Duplicate scores should be treated as individual entries. *Break:* If the user expects unique ranks (e.g., only one "100" score), this code fails because it preserves all occurrences of the same value.
+*   **Assumption:** The input list is small enough that $O(N \log N)$ sorting is acceptable. *Break:* For extremely large datasets, this will cause significant latency; a heap-based approach would be required.
+
+5. The 3 highest-leverage issues only, each as: [severity high/med/low] the problem — a concrete fix.
+*   [Severity: High] Mutable default argument `seen=[]` causes scores to persist across unrelated function calls, violating the "Pure function" claim. **Fix:** Remove `seen` entirely and use `sorted(set(scores), reverse=True)[:limit]` inside `top_scores`.
+*   [Severity: High] The current logic does not actually filter for "highest" scores correctly because it doesn't sort in descending order before slicing. **Fix:** Change the sorting line to `seen.sort(reverse=True)`.
+*   [Severity: Med] Inefficient complexity for large lists ($O(N \log N)$). **Fix:** Use `heapq.nlargest(limit, scores)` to achieve $O(N \log k)$ complexity.
+
+6. Verdict: is this genuinely better than leaving it as is?
+Yes. The current implementation contains a critical bug where the results of one call to `top_scores` will contaminate all subsequent calls because of the mutable default argument. It fails its own "Pure function" contract.

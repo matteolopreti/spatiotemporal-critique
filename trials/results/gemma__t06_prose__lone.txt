@@ -1,0 +1,9 @@
+[high] The claim "reduces query latency by 143%" is mathematically impossible — Change to a realistic percentage (e.g., "up to 85%") or clarify if you mean a "1.4x speed increase." A reduction of 100% would mean zero latency; any number above 100% implies negative time.
+
+[high] Logical contradiction between "full backward compatibility" and the mandatory manual configuration update — Change "full backward compatibility" to "broad backward compatibility" or explicitly state that while the core engine supports 3.x projects, a one-time configuration migration is required for the `clusterId` removal.
+
+[med] Lack of actionable instructions for the breaking change — Add a link to the documentation or a brief instruction on how to migrate the `clusterId` field to ensure users don't experience deployment failures during the upgrade.
+
+[low] Vague benchmark claims — Specify what types of queries were tested (e.g., "complex joins," "large-scale aggregations") or provide a link to the technical white paper/benchmark results to establish credibility.
+
+VERDICT — Don't ship. The 143% latency reduction is a glaring mathematical error that will destroy the product's credibility with technical users, and the contradiction regarding backward compatibility will lead to failed deployments for customers who assume the upgrade will be seamless.

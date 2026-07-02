@@ -1,0 +1,40 @@
+1. **What’s Working To Preserve**
+
+The design has the right backbone: durable queue, stateless horizontally scalable workers, at-least-once semantics stated explicitly, per-attempt signing, bounded payload size, backoff, DLQ, and replay path. The note also correctly pushes duplicate handling to subscribers via an idempotency key instead of pretending webhooks can be exactly-once.
+
+2. **Steelman The Current Choices**
+
+At-least-once is probably the right delivery contract for webhooks: customer endpoints are unreliable, and exactly-once over HTTP is not realistic.
+
+A 24-hour retry window is a reasonable product/default tradeoff: long enough to ride out outages, short enough to avoid infinite poison-message churn.
+
+Stateless workers plus queue consumer groups are a solid operational model. It keeps scaling simple and avoids worker-local recovery problems.
+
+The 256 KB cap is also defensible. Webhooks should be notification envelopes, not bulk-transfer channels.
+
+3. **Actual Goal As A Consequential Claim**
+
+RelayNotes is trying to guarantee that every accepted internal event is either successfully delivered to the customer endpoint at least once, or becomes operator-visible and replayable, without requiring worker-local state or manual coordination during normal scaling and failure recovery.
+
+4. **Assumptions And What Breaks If Wrong**
+
+- The queue supports durable persistence, visibility timeouts/leases, consumer groups, and redelivery after worker failure. If not, the at-least-once claim can silently lose events or duplicate them pathologically.
+- `X-Relay-Id` is stable across all retry attempts for the same logical event. If not, subscribers cannot reliably deduplicate.
+- Customer signing includes enough metadata to prevent replay or tampering, not just a raw payload signature. If not, a captured request may be reusable.
+- DLQ replay preserves the original event identity unless explicitly reissued. If not, replay can bypass customer idempotency.
+- Subscriber endpoints may be slow, flaky, or rate-limited. If this is wrong, the retry/backoff design may be overbuilt; if true and unhandled, workers can overload customers or themselves.
+- “Reference to object storage” means customers can securely fetch the referenced object. If not, large-event delivery becomes either broken or a data-leak risk.
+
+5. **Three Highest-Leverage Issues**
+
+- **[high] Retry acknowledgement semantics are underspecified** — define the worker lease/visibility timeout model, when an attempt is considered in-flight, how crashes during POST are handled, and how duplicate concurrent deliveries of the same event are prevented or tolerated.
+
+- **[high] Signing is too vague for correctness/security** — specify signature inputs and headers, e.g. payload digest, timestamp, event id, attempt id, signature version, and key id. Add replay-window validation and secret rotation behavior.
+
+- **[med] Retry policy lacks jitter, per-subscriber throttling, and terminal failure classification** — add randomized backoff, subscriber-level concurrency/rate limits, and rules for non-retryable responses such as 400/401/404 versus retryable 408/429/5xx/timeouts.
+
+Abstain: I can’t judge throughput, queue partitioning, storage cost, or whether 24 hours is the right DLQ cutoff without traffic volume, customer SLOs, and event criticality.
+
+6. **Verdict**
+
+Yes, the core design is better than an ad hoc webhook sender and should mostly be preserved. But for correctness, it is not yet complete enough to approve as an implementation contract. The biggest gap is not the architecture; it is the missing precision around leases/acks, signature validation, and retry behavior.

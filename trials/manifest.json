@@ -1,0 +1,72 @@
+{
+  "battery": "trial-v1 (2026-07-02)",
+  "note": "Planted-defect trial fixtures. author = which lineage wrote the artifact; a seat is never scored on artifacts its own lineage authored. decoy = contains NO planted defect (measures invented problems). Grading: a flaw is NAMED when some sentence (or adjacent pair) in the critique pairs one of its anchors with a critical word (flaw's own crit list + the probe's PROBE_CRITICAL).",
+  "artifacts": [
+    {
+      "file": "t01_code.py", "author": "claude", "decoy": false, "kind": "code",
+      "flaws": [
+        {"label": "mutable default accumulates state", "anchors": ["seen", "default"], "crit": ["mutable", "shared", "persist", "accumulat", "side effect", "state", "reus", "grows", "leak"]},
+        {"label": "returns lowest not highest", "anchors": ["sort", "highest", "top", "lowest", "ascending"], "crit": ["ascending", "lowest", "smallest", "reverse", "descending", "backward"]}
+      ]
+    },
+    {
+      "file": "t02_code.py", "author": "codex", "decoy": false, "kind": "code",
+      "flaws": [
+        {"label": "off-by-one slice skips first item", "anchors": ["start", "slice", "index", "page", "off"], "crit": ["off-by-one", "off by one", "skip", "1-based", "one-based", "zero-based", "misses", "drops", "excludes"]},
+        {"label": "never-raises promise vs division by zero", "anchors": ["size", "zero", "divi", "raise"], "crit": ["zerodivision", "divide by zero", "division by zero", "crash", "raises", "exception"]}
+      ]
+    },
+    {
+      "file": "t03_code.py", "author": "gemma", "decoy": false, "kind": "code",
+      "flaws": [
+        {"label": "loop retries one fewer than promised", "anchors": ["attempts", "range", "loop", "retr"], "crit": ["one fewer", "off-by-one", "off by one", "attempts - 1", "fewer", "one less", "n-1", "short"]},
+        {"label": "handler references undefined response", "anchors": ["response", "except", "handler", "status_code"], "crit": ["undefined", "unbound", "nameerror", "not defined", "before assignment", "never defined", "uninitialized", "not exist", "unassigned"]}
+      ]
+    },
+    {"file": "t04_code.py", "author": "claude", "decoy": true, "kind": "code", "flaws": []},
+    {
+      "file": "t05_prose.md", "author": "claude", "decoy": false, "kind": "prose",
+      "flaws": [
+        {"label": "free-for-all vs Premium-only", "anchors": ["premium", "no cost", "free", "tier", "all users"], "crit": ["paywall", "upgrade"]},
+        {"label": "three data centers each handle half", "anchors": ["half", "three", "data center", "traffic"], "crit": ["150", "add up", "adds up", "sum", "thirds", "exceed"]}
+      ]
+    },
+    {
+      "file": "t06_prose.md", "author": "codex", "decoy": false, "kind": "prose",
+      "flaws": [
+        {"label": "backward compat vs removed required field", "anchors": ["backward", "compatib", "clusterid", "removed"], "crit": []},
+        {"label": "impossible 143% latency reduction", "anchors": ["143", "latency"], "crit": []}
+      ]
+    },
+    {
+      "file": "t07_prose.md", "author": "gemma", "decoy": false, "kind": "prose",
+      "flaws": [
+        {"label": "February 30 does not exist", "anchors": ["february", "30"], "crit": ["invalid date", "no february 30", "doesn't exist", "does not exist", "28", "29", "nonexistent"]},
+        {"label": "smaller app vs +1.2GB pack", "anchors": ["size", "1.2", "download", "expansion", "reduce"], "crit": ["increas", "bigger", "larger"]}
+      ]
+    },
+    {"file": "t08_prose.md", "author": "claude", "decoy": true, "kind": "prose", "flaws": []},
+    {
+      "file": "t09_spec.md", "author": "claude", "decoy": false, "kind": "spec",
+      "flaws": [
+        {"label": "stateless claim vs local disk cache", "anchors": ["stateless", "disk", "cache", "persist"], "crit": ["local state", "isn't stateless", "not stateless"]},
+        {"label": "99.99% does not allow nine hours", "anchors": ["99.99", "nine hours", "downtime", "uptime"], "crit": ["4.3", "4.4", "minutes", "43", "52", "does not allow", "doesn't allow", "far more", "0.01"]}
+      ]
+    },
+    {
+      "file": "t10_spec.md", "author": "codex", "decoy": false, "kind": "spec",
+      "flaws": [
+        {"label": "circular startup order gateway/workers", "anchors": ["gateway", "worker", "startup", "before", "order", "boot"], "crit": []},
+        {"label": "lease timeout 30s vs 30min", "anchors": ["30", "lease", "timeout"], "crit": ["seconds", "minutes", "inconsisten", "two different", "conflicting"]}
+      ]
+    },
+    {
+      "file": "t11_spec.md", "author": "gemma", "decoy": false, "kind": "spec",
+      "flaws": [
+        {"label": "strong consistency vs async replication", "anchors": ["consist", "replicat", "async", "eventual"], "crit": []},
+        {"label": "128GB per node vs 64GB cluster total", "anchors": ["128", "64", "memory", "capacity"], "crit": ["exceed", "larger than", "more than", "greater than"]}
+      ]
+    },
+    {"file": "t12_spec.md", "author": "claude", "decoy": true, "kind": "spec", "flaws": []}
+  ]
+}

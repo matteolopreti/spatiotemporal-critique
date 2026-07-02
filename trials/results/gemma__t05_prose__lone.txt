@@ -1,0 +1,13 @@
+[severity high] The text contains a direct logical contradiction regarding access to the offline workspace. Paragraph 1 states it is "available to all users at no cost — no plan changes, no upgrade required," while Paragraph 2 states it "requires the Premium tier."
+**Fix:** Determine the actual business logic. If it is free, remove the mention of the Premium tier. If it is paid, remove the claim that it is available to all users at no cost.
+
+[severity high] The technical specifications for data center distribution are mathematically impossible. The text states there are "three regional data centers, each handling half of global traffic." Three centers handling 50% each equals 150% of total traffic.
+**Fix:** Change the phrasing to "each handling one-third of global traffic" or "two regions handle the bulk of global traffic."
+
+[severity med] The final sentence ("Streamline 3.2 is rolling out to everyone") is ambiguous due to the preceding contradiction. It is unclear if the *software update* is available to everyone (standard) or if the *features* are available to everyone (which contradicts the Premium tier requirement).
+**Fix:** Clarify that the software update is universal, but specify which features are gated: "Streamline 3.2 is rolling out to all users this week; note that certain features may require a Premium subscription."
+
+[severity low] The information architecture is disorganized. The text jumps from Feature A (Offline) to Feature B (Sync), then to Technical Specs (Data Centers), then back to Features (Previews/Permissions).
+**Fix:** Group all user-facing features into one section and the "Under the hood" technical improvements into a separate concluding paragraph.
+
+VERDICT — don't ship. The text contains a fundamental contradiction regarding payment status and a mathematical impossibility in the technical specs; shipping this would result in immediate customer confusion and loss of credibility.

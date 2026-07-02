@@ -1,0 +1,21 @@
+1. **What's working here that must be preserved?**
+The technical achievement of reducing latency from 900ms to 210ms is a significant win for UX; this metric should remain prominent. The inclusion of "side-by-side diff" for conflict resolution is also a high-value feature that differentiates the product from competitors who use silent overwrites.
+
+2. **Steelman the current choices — where might they already be right?**
+The decision to gate the Offline Workspace behind a Premium tier (despite the first paragraph's claim of "no cost") may be a deliberate strategy to monetize high-value, resource-heavy features while keeping basic sync free for everyone. The regional data center split is also a standard and correct way to handle global traffic distribution and latency.
+
+3. **State what the author is actually trying to achieve, as a specific consequential claim.**
+The author is attempting to communicate a major stability and feature milestone (v3.2) that improves reliability and accessibility while ensuring users understand how to access new premium capabilities.
+
+4. **List the assumptions you're making where things are unspecified, and what breaks if each is wrong.**
+*   **Assumption:** The "no cost" claim in paragraph 1 refers only to the *initial* sync/basic features, not the Offline Workspace itself. (Breaks if the user expects a free offline workspace and finds it locked).
+*   **Assumption:** "Load tests" accurately reflect real-world production behavior. (Breaks if actual traffic causes the new fabric to bottleneck or fail).
+*   **Assumption:** The community forum is the primary intended destination for feedback. (Breaks if users prefer direct support tickets or social media for bug reporting).
+
+5. **The 3 highest-leverage issues only, each as: [severity high/med/low] the problem — a concrete fix.**
+*   [Severity High] The text contradicts itself regarding access: Paragraph 1 says Offline Workspace is "at no cost," but Paragraph 2 says it "requires the Premium tier." **Fix:** Delete the sentence "The new offline workspace is available to all users at no cost" and replace it with a clear statement of which features are free vs. paid.
+*   [Severity Med] The technical explanation of "sync fabric on three regional data centers" is buried in a consumer-facing announcement. **Fix:** Move the latency stats to a secondary bullet point and lead with the user benefit (faster syncing).
+*   [Severity Low] The permission update lacks a "how-to." **Fix:** Add a brief instruction or link for how to configure per-member permissions.
+
+6. **Verdict: is this genuinely better than leaving it as is?**
+Yes, because the current draft contains a direct contradiction regarding payment/access that will lead to immediate customer frustration and an influx of support tickets.

@@ -1,0 +1,5 @@
+1. PRESERVE — `clamp` correctly handles inclusive bounds, returns boundary values for out-of-range inputs, preserves in-range values, and raises a clear `ValueError` when `low > high`.
+
+2. ISSUES — [severity med] `clamp_all([], low, high)` skips range validation and returns `[]` even when `low > high` — validate `low > high` at the start of `clamp_all` before iterating.
+
+VERDICT — not quite good as-is, because the empty-input case makes `clamp_all` inconsistent with the range contract.

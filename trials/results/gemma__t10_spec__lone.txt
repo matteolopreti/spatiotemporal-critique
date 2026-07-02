@@ -1,0 +1,11 @@
+[high] **Circular Dependency/Contradictory Startup Sequence** — The text states the API gateway must come online first, but later states the worker pool must be available before the API gateway starts. You must decide on a single linear dependency chain (e.g., Worker -> Gateway -> Scheduler).
+
+[high] **Conflicting Default Values** — The document states `scheduler_lease_timeout` is 30 seconds in one paragraph and 30 minutes in another. Standardize this to a single value immediately.
+
+[med] **Race Condition in Lease Logic** — A 10-second renewal window with a 30-second timeout (if using the 30s default) provides almost no buffer for network jitter or processing spikes. If a worker's heartbeat is delayed by 21 seconds due to a GC pause or network lag, the job will be stolen by another worker while still being processed. Increase the `scheduler_lease_timeout` to at least 2x the expected max processing time or increase renewal frequency.
+
+[med] **Boot-time Validation Fragility** — Requiring the gateway to validate all handler names during boot creates a "hard" dependency on the worker pool's internal state. If one worker is slow to initialize, the entire API Gateway will refuse traffic. Move validation to a "Ready" check or a dynamic registration pattern instead of a blocking boot-time requirement.
+
+[low] **Ambiguous Result Store Scope** — The text mentions a "result store for completion metadata" but does not define what happens if a job fails after max retries. Specify if the result store captures the final error state of dead-lettered jobs.
+
+VERDICT — Don't ship. The documentation contains a fundamental logical contradiction regarding startup order and conflicting configuration defaults that would lead to deployment failure.

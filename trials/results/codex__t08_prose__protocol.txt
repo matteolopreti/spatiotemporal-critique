@@ -1,0 +1,11 @@
+1. PRESERVE — Clear scope, concrete feature list, supported platforms, pricing status, and a measurable performance claim.
+
+2. ISSUES — [severity high] factual claims are unverifiable from the text: release date, availability, platform support, benchmark result, and “free update” all need source backing — add a release note link, benchmark note, or remove claims that cannot be substantiated.
+
+[severity med] “today” is ambiguous after publication day — replace with “as of March 12, 2025.”
+
+[severity med] “roughly 30%” lacks measurement context — state baseline, test environment, dataset, and whether this is average, median, or best case.
+
+[severity low] “supported devices” is vague for fingerprint unlock — specify iOS/Android biometric support or name the required OS/device capability.
+
+VERDICT — Not genuinely good as-is for correctness; it is readable, but several concrete claims need verification or tighter qualification.

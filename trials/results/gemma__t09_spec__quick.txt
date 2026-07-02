@@ -1,0 +1,21 @@
+1. **What's working here that must be preserved?**
+The stateless architecture and the 6-hour rotation overlap are critical. Statelessness ensures horizontal scalability (adding/removing nodes without state synchronization), and the overlapping key window prevents authentication outages during the transition period between rotations.
+
+2. **Steelman the current choices — where might they already be right?**
+The local disk cache is a valid defense against "thundering herd" problems. By caching validated tokens, you protect the underlying Key Management Service (KMS) or the CPU-intensive cryptographic verification step from being overwhelmed by high-frequency requests for the same active session. Using `/var/cache` instead of pure memory allows for larger-than-memory cache sizes if a specific burst of traffic requires holding a massive number of concurrent sessions.
+
+3. **State what the author is actually trying to achieve, as a specific consequential claim.**
+The author is attempting to build a high-throughput, horizontally scalable authentication gateway that minimizes latency by trading off immediate global revocation consistency for local cache performance.
+
+4. **List the assumptions you're making where things are unspecified, and what breaks if each is wrong.**
+*   **Assumption:** Disk I/O is sufficient for the required TPS (Transactions Per Second). *If false:* The service will experience high p99 latency or "I/O wait" bottlenecks under heavy load.
+*   **Assumption:** Tokens are only invalidated by expiry. *If false:* If a token must be revoked before it expires (e.g., due to a breach), the current design fails because the local cache will continue to honor the stolen token until its TTL expires.
+*   **Assumption:** Audit events are non-blocking/asynchronous. *If false:* The service's latency will be tied to the availability and speed of the audit logging backend, potentially causing cascading failures if the logger slows down.
+
+5. **The 3 highest-leverage issues only.**
+*   [Severity High] **Revocation Gap:** There is no mechanism to invalidate a token globally before its expiry. Because each instance has its own local cache, a revoked token remains valid on any node that has already cached it. **Fix:** Implement a short TTL (Time-to-Live) on the local cache entries and/or a distributed "Revocation List" (e.g., a Bloom filter or a fast-lookup Redis set).
+*   [Severity Med] **Disk I/O Bottleneck:** Using `/var/cache` for every validation implies a disk write/read per request. This is significantly slower than memory and can lead to IOPS exhaustion. **Fix:** Move the primary cache to an in-memory LRU (Least Recently Used) cache; use the disk only as a secondary overflow or for persistence across restarts.
+*   [Severity Low] **Audit Event Reliability:** The design does not specify if audit events are "fire-and-forget" or guaranteed delivery. **Fix:** Explicitly define an asynchronous, buffered logging mechanism to ensure that audit failures do not block the validation response.
+
+6. **Verdict: is this genuinely better than leaving it as is?**
+No. While the architecture scales well, the **Revocation Gap** is a significant security flaw for a "Gate" service. A system that validates tokens but cannot immediately kill a compromised session is fundamentally incomplete for production security. You must address the revocation strategy before deploying.

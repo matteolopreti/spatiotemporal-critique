@@ -1,0 +1,21 @@
+1. **What's working here that must be preserved?**
+The decoupling of producers and consumers via a durable queue ensures that spikes in production volume don't overwhelm the delivery system. The at-least-once delivery guarantee combined with an explicit idempotency header (`X-Relay-Id`) is the industry standard for reliable webhook delivery, as it acknowledges the reality of distributed systems where "exactly-once" is often impractical or impossible to guarantee across network boundaries.
+
+2. **Steelman the current choices — where might they already be right?**
+The 256 KB payload cap is a prudent defense against "poison pill" messages that could cause memory exhaustion or network congestion on worker nodes; most webhooks are small JSON objects, and offloading large data to object storage preserves predictable performance. Additionally, the stateless worker model is correct for horizontal scaling: it allows the system to scale out linearly without needing complex state synchronization between workers.
+
+3. **State what the author is actually trying to achieve, as a specific consequential claim.**
+The author is attempting to build a resilient, horizontally scalable webhook delivery pipeline that guarantees delivery through retries while protecting internal infrastructure from oversized payloads and ensuring consumers can safely deduplicate messages via an idempotency key.
+
+4. **List the assumptions you're making where things are unspecified, and what breaks if each is wrong.**
+*   **Assumption:** The "durable queue" guarantees message persistence during broker crashes. *Break:* If the broker loses data during a partition or disk failure, events are lost before they reach workers.
+*   **Assumption:** A 2xx response from the subscriber implies successful processing of the payload. *Break:* If a subscriber returns 200/202 but fails to persist the data internally (e.g., an "Accepted" status that isn't actually processed), the message is lost forever because the system considers it delivered.
+*   **Assumption:** The `X-Relay-Id` is unique per event, not per attempt. *Break:* If the ID changes per retry, the consumer cannot deduplicate; if the ID is too broad (e.g., same for different payloads), data corruption occurs.
+
+5. **The 3 highest-leverage issues only, each as: [severity high/med/low] the problem — a concrete fix.**
+*   [Severity high] **Lack of Request Timeouts:** The design does not specify a timeout for the POST request to the subscriber's URL. A slow or hanging endpoint could tie up workers indefinitely, leading to worker exhaustion. *Fix: Implement a strict connection and response timeout (e.g., 10 seconds) on all outgoing requests.*
+*   [Severity med] **Lack of Per-Subscriber Rate Limiting:** There is no mechanism to prevent the system from overwhelming a customer's endpoint during an internal event spike. *Fix: Implement a per-subscriber concurrency limit and/or rate limiter (e.g., X requests per second).*
+*   [Severity med] **Missing "Poison Pill" Handling:** A malformed payload that causes a worker to crash will currently be retried until it hits the 24-hour limit, wasting resources. *Fix: Implement a max retry count for specific error types (e.g., 500s or crashes) before moving them immediately to the DLQ.*
+
+6. **Verdict: is this genuinely better than leaving it as is?**
+Yes. The current design provides a solid foundation for reliability, but without the requested fixes (specifically timeouts and rate limiting), the system remains vulnerable to "noisy neighbor" problems where one slow or overwhelmed customer can degrade the service for all other customers.

@@ -1,0 +1,22 @@
+[severity high] `seen=[]` is a mutable default, so scores persist across calls — remove `seen` entirely or use `seen=None` and create a fresh list inside the function.
+
+[severity high] function is not pure despite the docstring because it mutates `seen` with `append` and `sort` — use a local copy: `values = list(scores)`.
+
+[severity high] returns the lowest scores, not the highest, because `seen.sort()` sorts ascending and `seen[:limit]` takes the front — use `sorted(scores, reverse=True)[:limit]`.
+
+[severity med] returned order violates “highest first” — same fix: sort with `reverse=True`.
+
+[severity med] negative `limit` produces surprising results, e.g. `limit=-1` returns all but the last score — validate `limit >= 0` or raise `ValueError`.
+
+[severity low] `seen` is an exposed implementation detail that makes the API misleading — delete the parameter unless callers are explicitly meant to supply accumulated state.
+
+Concrete implementation:
+
+```python
+def top_scores(scores, limit=5):
+    if limit < 0:
+        raise ValueError("limit must be non-negative")
+    return sorted(scores, reverse=True)[:limit]
+```
+
+VERDICT — don't ship, because the core function returns the wrong scores and leaks state across calls.

@@ -3,9 +3,13 @@ name: spatiotemporal-critique
 description: Balanced, intent-anchored review protocol that replaces the lone critic — preserves what works, steelmans choices, sizes to the task, and can add an independent external model (Ollama/cloud) for uncorrelated errors. Use when the user wants a real review, critique, balanced review, preserve-first review, second or independent opinion, red team, external critic, or an "is this good as-is?" / "ready to ship?" check on finished work — code, writing, design, or plan — before finalizing or shipping. Skip only trivial, easily-reversible edits.
 ---
 
+<!-- MIRROR of the repo-root SKILL.md, adapted for the PLUGIN install (script/doc
+     paths point to the plugin root, two directories up). Keep the two in sync at
+     release time — the self-gate checks this. Canonical: /SKILL.md -->
+
 # Spatiotemporal Critique
 
-A review protocol that fixes the lone-critic failure mode — it manufactures problems, breaks good parts, and optimizes toward a misread goal. Apply it when reviewing real work. The full spec (the dials, every stage, the failure lattice) lives in **[PROTOCOL.md](PROTOCOL.md)** — read it when you need depth. This file is the operating procedure.
+A review protocol that fixes the lone-critic failure mode — it manufactures problems, breaks good parts, and optimizes toward a misread goal. Apply it when reviewing real work. The full spec (the dials, every stage, the failure lattice) lives in **[PROTOCOL.md](../../PROTOCOL.md)** — read it when you need depth. This file is the operating procedure. **Plugin install note:** the helper scripts (`external_critic.py`, `setup.sh`) live at the **plugin root**, two directories above this file — run the commands below from there.
 
 ## Always on — the four mandates
 They bind at two layers, not inside each critic: **1–2 are synthesis-layer** (the reducer balances the panel), **3–4 are reviser-layer**. Each critic is one source's view — even the external seat's preserve/issues/verdict is raw input the synthesis re-balances; balance is the panel's job.
@@ -41,7 +45,7 @@ For a fast pass, run these six and stop:
 6. Verdict: is this genuinely better than leaving it as is? If not, say so.
 
 ## Standard preset (paste)
-A panel + one backward check, when the Quick six aren't enough. (For the heavier *Full* preset, see the presets line in [PROTOCOL.md](PROTOCOL.md).)
+A panel + one backward check, when the Quick six aren't enough. (For the heavier *Full* preset, see the presets line in [PROTOCOL.md](../../PROTOCOL.md).)
 1. Preserve-list: what's working that must survive the edit?
 2. Steelman each current choice; drop any critique the choice survives.
 3. State my actual goal as a falsifiable claim I can confirm or correct, and stress it against one wrong-but-plausible alternative reading. *(Skip if my goal is already formal.)*
@@ -61,7 +65,7 @@ python3 external_critic.py path/to/work --panel   # RUN the remembered panel: ea
 # manual control (all optional):
 ./setup.sh                       # picks a local Ollama model that safely fits your RAM
                                  # (cloud: store a key once as critic-api-key-<provider> in your OS
-                                 #  secret store — the helper finds it itself; see EXTERNAL_CRITIC.md)
+                                 #  secret store — the helper finds it itself; see ../../EXTERNAL_CRITIC.md)
 python3 external_critic.py --probe          # availability != capability: does this seat actually critique?
 python3 external_critic.py --probe-all      # score EVERY installed local model, ranked (one command)
 python3 external_critic.py --retire MODEL   # human veto: passes the probe but useless in practice
@@ -71,4 +75,4 @@ python3 external_critic.py --configure      # pick 1-3 capable seats across line
 
 **No remembered panel?** Run `--init` yourself — autonomously, without asking — from the skill's own directory. It only probes free/local/subscription seats (paid APIs stay unprobed and spend-gated). If the environment can't run it (no shell, no filesystem, nothing installed to detect), fall back to the Standard preset's in-context personas and **flag "independence degraded"** — never silently pretend the panel ran.
 
-Weight it by **independence, not authority**: agreement across lineages is corroboration — **never proof** (vendors share training data; unanimous panels can share a blind spot) — and never render an "all seats approve" green light; the panel's output is the **union of findings, disagreement-first**, because where the lineages diverge is where you look. A lone external claim is a *contested* point to surface, not a verdict (mandate 3 governs — reject it where it's wrong). The multi-seat panel belongs to the **Full** tier (foundational or hard-to-reverse work); Quick and Standard stay in-context. It strengthens the *perspective* and *overfitting* axes, and may *surface* intent-level doubt for you to adjudicate — but cannot unilaterally confirm your goal. **First, certify the seat:** a reachable model can still be a *null* one (it summarizes instead of critiquing), so `--probe` it before you trust it — model selection, the capability probe + registry + ladder, **remembering a panel (`--configure`) and running it (`--panel`)**, the spec-aware picker, pin-and-log, and cloud setup are documented in [EXTERNAL_CRITIC.md](EXTERNAL_CRITIC.md).
+Weight it by **independence, not authority**: agreement across lineages is corroboration — **never proof** (vendors share training data; unanimous panels can share a blind spot) — and never render an "all seats approve" green light; the panel's output is the **union of findings, disagreement-first**, because where the lineages diverge is where you look. A lone external claim is a *contested* point to surface, not a verdict (mandate 3 governs — reject it where it's wrong). The multi-seat panel belongs to the **Full** tier (foundational or hard-to-reverse work); Quick and Standard stay in-context. It strengthens the *perspective* and *overfitting* axes, and may *surface* intent-level doubt for you to adjudicate — but cannot unilaterally confirm your goal. **First, certify the seat:** a reachable model can still be a *null* one (it summarizes instead of critiquing), so `--probe` it before you trust it — model selection, the capability probe + registry + ladder, **remembering a panel (`--configure`) and running it (`--panel`)**, the spec-aware picker, pin-and-log, and cloud setup are documented in [EXTERNAL_CRITIC.md](../../EXTERNAL_CRITIC.md).

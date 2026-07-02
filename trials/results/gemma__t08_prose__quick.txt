@@ -1,0 +1,21 @@
+1. What's working here that must be preserved?
+The clear segmentation of features (CSV Import, Recurring Invoices, Reports) and the inclusion of specific performance metrics (30% reduction on 50k+ entries). This provides tangible value to power users rather than relying on vague "speed improvements."
+
+2. Steelman the current choices — where might they already be right?
+Focusing on "Quality-of-Life" (QoL) over flashy new features is a strategic choice for accounting software, where stability and data integrity are paramount. The 10-row preview is a standard, effective UX pattern to prevent catastrophic data mapping errors before they occur in the database.
+
+3. State what the author is actually trying to achieve, as a specific consequential claim.
+The author is attempting to reduce churn among professional accounting users by demonstrating that the development team is actively listening to and refining high-friction workflows (data entry and reporting) rather than just adding superficial features.
+
+4. List the assumptions you're making where things are unspecified, and what breaks if each is wrong.
+*   **Assumption:** "Accounting teams" refers to professional firms/CPAs. *If wrong:* The tool may be over-engineered for casual sole proprietors who need simpler interfaces.
+*   **Assumption:** The "Standard benchmark set" reflects real-world production data. *If wrong:* The 30% performance gain might be irrelevant if the software struggles with different types of complex queries not included in the test.
+*   **Assumption:** Fingerprint unlock is a desired security feature for the target demographic. *If wrong:* If users prioritize ease of access over local app-locking, this adds friction without a perceived benefit.
+
+5. The 3 highest-leverage issues only, each as: [severity high/med/low] the problem — a concrete fix.
+*   [Low] Poor scannability of the feature list — Use bullet points for the three distinct categories (Import, Invoices, Reports) to allow users to find their specific needs faster.
+*   [Med] Ambiguous performance reporting — Specify the hardware/environment used for the "standard benchmark" to provide a more credible performance claim.
+*   [Low] Lack of "How-to" context — Include a call-to-action (CTA) or link to documentation for the new CSV mapping interface, as this is a significant workflow change.
+
+6. Verdict: is this genuinely better than leaving it as is?
+Yes. The review identifies that while the content is technically accurate, its effectiveness depends on improving scannability and metric transparency to satisfy a professional audience.

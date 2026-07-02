@@ -1,0 +1,13 @@
+[high] **Redundant Validation Logic**: The `clamp_all` function calls `clamp` iteratively, meaning the `low > high` check is performed $N$ times for a list of size $N$. This turns an $O(1)$ validation into an $O(N)$ overhead.
+**Fix**: Move the range validation (`if low > high`) to the beginning of the `clamp_all` function so it is only checked once per batch operation.
+
+[med] **Missing Type Hints**: The code lacks type annotations, which are standard for production-grade Python to ensure static analysis and clarity on expected types (e.g., `float`, `int`, or `Sequence`).
+**Fix**: Add type hints: `def clamp(value: float, low: float, high: float) -> float:` and `def clamp_all(values: Iterable[float], low: float, high: float) -> List[float]:`.
+
+[med] **Memory Inefficiency**: `clamp_all` returns a full list. For very large datasets (e.g., processing millions of data points), this can cause unnecessary memory pressure.
+**Fix**: Change the implementation to use a generator expression or provide an option for lazy evaluation, though keeping it as a list is acceptable if the API contract requires a list return type.
+
+[low] **Ambiguous Docstring**: The docstring for `clamp_all` mentions "preserving order," which is technically only applicable to sequences (like lists/tuples). It does not describe behavior for unordered collections like sets.
+**Fix**: Change "preserving order" to "preserving input sequence."
+
+VERDICT — don't ship. The $O(N)$ validation overhead in `clamp_all` is a significant architectural flaw for a utility function designed to handle multiple values efficiently.

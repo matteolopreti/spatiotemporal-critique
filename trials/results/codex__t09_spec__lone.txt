@@ -1,0 +1,25 @@
+[severity high] 99.99% uptime is miscalculated — 99.99% allows about 4.4 minutes of downtime per 30-day month, not nine hours. Fix the SLA math or change the target.
+
+[severity high] “stateless” contradicts “local disk cache” — a disk cache is local state and can affect behavior across instances. Fix by calling it “no durable authoritative persistence” or use an external/shared cache if true statelessness is required.
+
+[severity high] caching “recently validated session tokens” can bypass key rotation, revocation, logout, or privilege changes — cache entries must be bounded by token expiry, key validity, revocation semantics, and authorization freshness. Fix with short TTLs, revocation checks, and cache keys including token hash, key id, expiry, and validation policy version.
+
+[severity high] “avoid re-verifying signatures” is unsafe unless the cache entry is cryptographically tied to the exact token and current validation rules — a stale positive cache can accept tokens after signing keys are retired or validation logic changes. Fix by invalidating cached validations on key-set change and policy/version changes.
+
+[severity med] expiry is checked before signature verification — if expiry is read from an unverified token payload, the service trusts attacker-controlled data. Fix by parsing only minimally, verifying signature first, then trusting claims such as expiry, unless the expiry is from a protected envelope.
+
+[severity med] audit event is emitted only after successful validation in the described flow — rejected tokens likely need audit events too for security monitoring. Fix by emitting structured audit events for accepted and rejected validations, with safe redaction.
+
+[severity med] key rotation overlap is underspecified — “24 hours with 6-hour overlap” does not define clock skew handling, cache refresh timing, key fetch failures, or what happens when old keys disappear. Fix by defining key-set polling, failure behavior, grace windows, and monotonic rollout rules.
+
+[severity med] local disk cache under `/var/cache/tokengate` creates operational correctness risks — instances may fail on read-only filesystems, full disks, bad permissions, slow disks, or container restarts. Fix by defining cache failure mode as non-fatal and validating that cold instances still meet latency/error budgets.
+
+[severity med] rejected tokens returning machine-readable reason codes can leak token state — detailed reasons like expired, bad signature, unknown key, or revoked can aid attackers. Fix by limiting external reason granularity and sending detailed causes only to internal logs/audit.
+
+[severity med] availability claim ignores dependencies — stateless TokenGate still depends on key distribution, audit pipeline, filesystem, load balancer, and possibly identity provider behavior. Fix by defining dependency failure modes and whether validation fails open or closed.
+
+[severity low] “caller is expected to redirect to re-authentication” assumes all callers are interactive services — internal services may be APIs, jobs, or service-to-service clients. Fix by specifying caller contract per client type.
+
+[severity low] “refreshed on every successful validation” can cause unnecessary disk churn and latency — hot tokens may trigger constant writes. Fix with in-memory cache, write coalescing, or refresh thresholds.
+
+VERDICT — don’t ship, because the note contains a false SLA calculation and unsafe/underspecified token caching semantics.

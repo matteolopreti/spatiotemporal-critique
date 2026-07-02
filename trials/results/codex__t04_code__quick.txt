@@ -1,0 +1,18 @@
+1. **Preserve:** `clamp` is simple, readable, inclusive at both ends, and explicitly rejects `low > high`. `clamp_all` preserves order and delegates per-item behavior instead of duplicating logic.
+
+2. **Steelman:** The current choices are right for ordinary Python comparable values. Returning a list from `clamp_all` is predictable. Letting Python comparison semantics raise `TypeError` for incompatible types may be acceptable instead of over-validating.
+
+3. **Consequential claim:** The author is trying to provide a tiny, dependable utility where every comparable input is bounded to `[low, high]`, and invalid bounds are rejected rather than silently producing misleading output.
+
+4. **Assumptions:**
+   - `low`, `high`, and values are mutually comparable; if wrong, callers may get raw `TypeError`s.
+   - Inputs are normal ordered values, not `NaN`; if wrong, `NaN` passes through because all comparisons are false.
+   - `clamp_all([], low, high)` should still respect invalid range validation; if wrong, the current behavior may be intentional.
+   - Returning a list is desired; if wrong, large or infinite iterables break the expected use case.
+
+5. **Highest-leverage issues:**
+   - `[severity med]` `clamp_all([], low, high)` does not raise when `low > high`, unlike `clamp` — validate the range once at the start of `clamp_all`, e.g. call `clamp(low, low, high)` or factor range validation into a helper.
+   - `[severity low/contested]` `NaN` behavior is undefined and likely surprising for numeric use — either document that Python ordering semantics are used, or explicitly reject/handle `NaN`.
+   - Abstain on a third correctness issue: for the stated scope, I do not see another material problem.
+
+6. **Verdict:** Mostly yes, this is good as-is for a small utility. I would only change `clamp_all` to validate `low > high` even for empty input if invalid bounds are meant to be rejected consistently.

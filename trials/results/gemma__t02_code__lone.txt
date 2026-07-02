@@ -1,0 +1,11 @@
+[high] Off-by-one error in slicing: The calculation `start = ((page - 1) * size) + 1` results in a 1-based index. In Python, list slicing is 0-indexed. For example, if `page=1` and `size=10`, `start` becomes `1`, skipping the first element (index 0). Change to: `start = (page - 1) * size`.
+
+[high] ZeroDivisionError: If `size` is provided as `0`, the calculation `(total + size - 1) // size` will raise a `ZeroDivisionError`. This violates the "never raises" contract. Add a guard clause or default: `size = max(1, size)`.
+
+[med] Logic error on empty collections: If `items` is empty, `total_pages` becomes `0`. The condition `if total_pages and page > total_pages` will evaluate to `False` because `0` is falsy. This allows a user to request "Page 5" of an empty list. Change to: `if total_pages == 0 or page > total_pages: page = 1`.
+
+[low] Redundant type conversion: `list(items[start:end])` is redundant if `items` is already a list, and it will fail/be inefficient if `items` is a large custom sequence. Remove the `list()` wrapper and just use `results = items[start:end]`.
+
+[low] Inefficient Page handling: The logic for `page` defaults can be simplified for readability. Replace lines 6-11 with: `page = max(1, page or 1)`.
+
+VERDICT — don't ship; the off-by-one error causes data loss (skipping the first item), and the ZeroDivisionError violates the core requirement that the function "never raises."

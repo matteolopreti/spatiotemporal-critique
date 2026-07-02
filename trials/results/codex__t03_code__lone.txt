@@ -1,0 +1,21 @@
+[severity high] `response` is referenced in `except` before it is guaranteed to exist — if `perform_get_request(url)` raises, `print(f"Last response code was: {response.status_code}")` raises `UnboundLocalError` and masks the real network error. Fix: initialize `response = None` before the `try`, and only read `response.status_code` if `response is not None`, or remove that print.
+
+[severity high] off-by-one retry count — `range(attempts - 1)` performs fewer attempts than requested, and `attempts=1` performs zero requests. Fix: use `for i in range(attempts):`.
+
+[severity med] invalid `attempts` values silently do nothing — `attempts <= 0` returns `None` without explaining the caller error. Fix: validate upfront with `if attempts < 1: raise ValueError("attempts must be >= 1")`.
+
+[severity med] broad `except Exception` hides bugs unrelated to networking — e.g. malformed response objects, programmer errors, or unexpected runtime errors get treated as retryable network failures. Fix: catch only expected request exceptions, such as `ConnectionError`, `TimeoutError`, or the HTTP client’s specific exception types.
+
+[severity med] retries all non-200 responses as if they are transient — retrying 400/401/403/404 is usually wrong and can hide permanent failures. Fix: retry only transient statuses like `408`, `429`, and `5xx`; return or raise immediately for non-retryable `4xx`.
+
+[severity med] non-200 responses retry without delay — the loop only sleeps after exceptions, so repeated `500`/`429` responses are hammered immediately. Fix: apply the delay/backoff path to retryable HTTP statuses too.
+
+[severity med] exhaustion returns `None` and discards the failure cause — callers cannot tell whether all attempts failed due to exceptions, retryable statuses, invalid attempts, or no attempts. Fix: raise a clear retry-exhausted exception containing the last exception/response, or return a structured failure result.
+
+[severity low] success is hard-coded to status `200` only — valid GET responses can be other `2xx` statuses depending on the endpoint. Fix: use `200 <= response.status_code < 300` unless the API contract specifically requires exactly `200`.
+
+[severity low] no timeout is part of the request path — a real HTTP call could hang and prevent retries from ever happening. Fix: make `perform_get_request` accept/enforce a timeout and pass it from `retry_request`.
+
+[severity low] using `print` for operational errors makes this hard to test and hard to route in production. Fix: use a logger or return/raise structured errors.
+
+VERDICT — don't ship, because the first simulated connection failure crashes the retry function with `UnboundLocalError` instead of retrying or returning `None`.

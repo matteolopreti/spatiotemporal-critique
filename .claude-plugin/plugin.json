@@ -1,0 +1,29 @@
+{
+  "name": "spatiotemporal-critique",
+  "version": "4.12.0",
+  "description": "Balanced AI code & writing review: a preserve-first, intent-anchored review protocol plus a multi-model external critic panel — a genuinely independent second opinion from different model families (local Ollama, OpenAI Codex CLI, or cloud APIs), each seat certified by a deterministic capability probe, every paid call spend-gated. Zero-config panel setup with --init.",
+  "author": {
+    "name": "Matteo Lopreti",
+    "url": "https://github.com/matteolopreti"
+  },
+  "license": "MIT",
+  "homepage": "https://matteolopreti.github.io/spatiotemporal-critique/",
+  "repository": "https://github.com/matteolopreti/spatiotemporal-critique",
+  "skills": "./skills/",
+  "keywords": [
+    "code-review",
+    "review",
+    "critique",
+    "second-opinion",
+    "multi-model",
+    "external-critic",
+    "red-team",
+    "preserve-first",
+    "steelman",
+    "balanced-review",
+    "ollama",
+    "independent-review",
+    "capability-probe",
+    "quality"
+  ]
+}

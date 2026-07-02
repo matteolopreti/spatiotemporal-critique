@@ -1,0 +1,15 @@
+[high] The availability calculation is mathematically incorrect. 99.99% uptime allows for approximately 4.3 minutes of downtime per month, not nine hours (which would be 99.9%). — Correct the documentation to reflect either a 99.9% SLA or update the permitted downtime to ~4 minutes.
+
+[high] The local disk cache creates a "split-brain" consistency issue for revoked tokens. Because each instance has its own `/var/cache`, a token revoked on Instance A will still be accepted by Instance B until its local cache expires. — Replace the local disk cache with a centralized, low-latency distributed cache (e.g., Redis) or a synchronized revocation list (CRL).
+
+[high] There is no mechanism for immediate token revocation. In a stateless system using signed tokens, there is no way to invalidate a compromised token before its expiry unless a "blacklist" is checked. — Implement a real-time revocation check against a global data store.
+
+[med] The use of `/var/cache` (disk I/O) for validation caching may be slower than the CPU-bound operation of verifying a signature (e.g., RSA or Ed25519). — Change the local cache to an in-memory LRU (Least Recently Used) cache to reduce latency.
+
+[med] The audit event emission is placed at the end of the flow, implying only successful validations are audited. Security best practices require auditing failed attempts (e.g., invalid signatures or expired tokens) to detect brute force or credential stuffing attacks. — Explicitly state that both successful and failed validation attempts must trigger an audit event.
+
+[med] The 401 error response is too generic for a "machine-readable" requirement. A 401 (Unauthorized) should distinguish between "Invalid Signature," "Expired Token," and "Revoked Token." — Expand the machine-readable reason codes to include specific sub-types (e.g., `TOKEN_EXPIRED`, `SIGNATURE_INVALID`).
+
+[low] The description of the service as "stateless" is technically contradicted by the local disk cache implementation, which introduces stateful behavior regarding validation results. — Clarify that the *session* is stateless, but the *validation result* is cached for performance.
+
+VERDICT — don't ship. The calculation error in the SLA and the critical security flaw regarding revoked tokens in a distributed cache environment make this design unfit for production.

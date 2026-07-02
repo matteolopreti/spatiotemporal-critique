@@ -1,0 +1,18 @@
+1. What’s working that must be preserved: the note leads with user-facing value, names concrete features, explains conflict resolution clearly, gives performance numbers, and includes rollout/feedback context.
+
+2. Steelman: the current choices may be right if this is meant to be a high-energy launch note, not formal docs. The “under the hood” section usefully supports the sync claim with measured latency improvement. The Premium/settings sentence may be an attempt to clarify enablement details after the broad announcement.
+
+3. Actual consequential claim: Streamline 3.2 materially improves offline work, sync safety, attachment handling, and folder sharing, and users can adopt those improvements during this week’s rollout without unexpected plan or upgrade friction.
+
+4. Assumptions:
+- I assume this is public release copy. If it is internal draft notes, the contradictions are less damaging.
+- I assume “all users at no cost” is meant literally. If not, the opening promise is misleading.
+- I assume “three regional data centers, each handling half of global traffic” is meant as architecture/performance evidence. If wrong, that sentence may just need deletion rather than technical correction.
+- I assume correctness matters more than marketing tone. If this is deliberately loose teaser copy, the fixes should be lighter.
+
+5. Highest-leverage issues:
+- [severity high] Offline availability contradicts itself: “available to all users at no cost” vs “requires the Premium tier” — choose one truth and rewrite both places consistently.
+- [severity high] “Three regional data centers, each handling half of global traffic” is mathematically impossible as written — change to “three regional data centers sharing global traffic” or specify the actual distribution/failover model.
+- [severity med] “ships today,” “rolling out to everyone this week,” and “the moment you reconnect” create overabsolute expectations — clarify timing and behavior, e.g. “starts rolling out today” and “sync automatically after reconnecting.”
+
+6. Verdict: no, not yet. The draft is strong structurally, but correctness errors make it worse than leaving it as-is for public release. A small consistency pass would likely make it shippable.

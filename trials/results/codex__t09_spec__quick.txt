@@ -1,0 +1,33 @@
+1. **What must be preserved?**  
+The design is aiming for horizontally scalable validation with no authoritative local state. The key-rotation overlap, explicit 401 reason codes, and audit-event requirement are all useful properties and should survive revisions.
+
+2. **Steelman the current choices**  
+A local cache can be reasonable if it is strictly an optimization, disposable, bounded by token expiry, and never treated as source of truth. Checking expiry before signature can also be defensible as a cheap reject path, provided no trusted decision is made from unsigned claims. A 6-hour key overlap may be enough if token TTLs and deployment propagation are shorter than that.
+
+3. **Actual consequential claim**  
+“TokenGate can provide highly available, horizontally scalable, secure session-token validation for internal services without any instance-local authoritative state, while safely handling key rotation and producing usable audit records.”
+
+4. **Assumptions and what breaks if wrong**  
+I’m assuming tokens are signed self-contained tokens, not opaque session IDs. If wrong, the design lacks the backing lookup/introspection dependency needed for validation.
+
+I’m assuming the disk cache is optional and disposable. If wrong, the service is not actually stateless, and draining/replacing instances can change behavior.
+
+I’m assuming cached validations still enforce token expiry, key validity, and any revocation semantics. If wrong, invalid tokens may continue to authenticate.
+
+I’m assuming “audit event” applies to both accepts and rejects. If wrong, security investigation and abuse detection will have blind spots.
+
+I’m assuming the availability target is meant literally. If wrong, the SLA language will mislead operators and stakeholders.
+
+5. **Three highest-leverage issues**
+
+[high] The 99.99% downtime math is wrong — 99.99% allows about 4.4 minutes per 30-day month, not nine hours.  
+Concrete fix: change the target or the allowance. Nine hours/month is roughly 98.75% availability.
+
+[high] The cache design can accidentally authenticate stale or revoked tokens — “refreshed on every successful validation” sounds like it may extend trust beyond the original validation constraints.  
+Concrete fix: specify that the cache is keyed by token hash, stores only validation metadata, expires no later than token `exp`, is invalidated or bounded across key rotation, and is bypassed/cleared for any revocation mechanism.
+
+[med] “Stateless” conflicts with “local disk cache” unless the cache is explicitly non-authoritative.  
+Concrete fix: say “stateless with respect to authoritative session state; local disk cache is a disposable performance cache and correctness must not depend on it.”
+
+6. **Verdict**  
+As written, no: it is not better than leaving the design unstated because it contains at least one hard factual error and one security-sensitive ambiguity. With the fixes above, the design becomes substantially stronger while preserving the intended architecture.

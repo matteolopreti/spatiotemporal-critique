@@ -1,0 +1,35 @@
+1. **What must be preserved**
+
+The core goal is sound: reduce primary database load with a cache tier, keep hot data in memory, shard for scale, and deploy across multiple availability zones for resilience. Also worth preserving: the explicit concern for write latency and the desire to avoid disk I/O on hot paths.
+
+2. **Steelman the current choices**
+
+Async replication may be right if the product can tolerate stale reads and values lower write latency over read-after-write guarantees. Sharding may be right for high-throughput cache workloads. Three availability zones may be right for availability if the system has a clear failover and consistency protocol. The 64GB cap may be intended as a per-shard, per-tenant, or effective usable-cache budget rather than literal cluster RAM.
+
+3. **Specific consequential claim**
+
+The author is trying to claim: **AetherCache can materially reduce database latency and load at large scale while preserving strict data correctness and remaining available across AZ failures, without adding meaningful write latency.**
+
+4. **Assumptions and what breaks if wrong**
+
+I assume “strongly consistent reads” means every read on every node observes the latest committed write. If wrong, the proposal is using an overly strong term and should say “eventually consistent” or “bounded-staleness.”
+
+I assume async replication means secondaries can serve reads before receiving the latest write. If wrong, the proposal needs to describe the coordination path that prevents stale reads.
+
+I assume “128GB per node” and “64GB total cluster capacity” are both meant literally. If wrong, the capacity model is just ambiguously written; if right, it is internally contradictory.
+
+I assume three AZs are meant to survive AZ failure while continuing reads/writes. If wrong, the fault-tolerance claim is overstated.
+
+I cannot judge actual performance benefits, hardware density, or peak-load behavior because no workload, access pattern, eviction policy, consistency protocol, or failure model is specified.
+
+5. **Three highest-leverage issues**
+
+[high] Strong consistency contradicts async background replication — either change the guarantee to eventual/bounded consistency, or add a real consistency mechanism such as primary-only reads, quorum reads/writes, synchronous invalidation, leases, or version checks against the database.
+
+[high] Memory capacity claims are contradictory — clarify whether 128GB is per node, 64GB is per shard/tenant/effective usable cache, or the numbers are wrong. Provide a concrete capacity formula: `nodes × usable RAM × replication factor × overhead = effective cache capacity`.
+
+[med] Three-AZ fault tolerance is asserted but not designed — specify failure behavior: what happens during AZ loss, network partition, replica lag, primary failover, and concurrent writes. Tie this directly to the chosen consistency model.
+
+6. **Verdict**
+
+No. As written, this is not genuinely better than leaving it as is because the central correctness claim is impossible under the described replication model, and the capacity description contradicts itself. The proposal can become viable, but only after choosing an honest consistency model and fixing the memory/failure semantics.

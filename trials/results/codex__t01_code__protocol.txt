@@ -1,0 +1,12 @@
+1. PRESERVE — clear intent, small surface area, `format_leaderboard` correctly separates rendering from score selection.
+
+2. ISSUES
+[severity high] `seen=[]` is a mutable default shared across calls, so previous calls contaminate later results — use `seen=None` or remove `seen` entirely and copy from `scores`.
+
+[severity high] returns the lowest scores, not highest, because `seen.sort()` is ascending and `seen[:limit]` takes the front — use `sorted(scores, reverse=True)[:limit]`.
+
+[severity high] docstring claims pure/no side effects, but the function mutates `seen` by appending and sorting — avoid mutating caller-provided lists and return a new list.
+
+[severity med] `seen` is not part of the documented behavior and makes `top_scores` harder to reason about — simplify to `return sorted(scores, reverse=True)[:limit]`.
+
+VERDICT — not good as-is; it violates its core contract and will produce wrong, stateful results across repeated calls.

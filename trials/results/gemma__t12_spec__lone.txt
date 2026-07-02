@@ -1,0 +1,17 @@
+[high] **Lack of Ordering Guarantees during Retries** — If a message fails and enters a retry loop while subsequent messages succeed, the subscriber receives events out of order. You must specify if strict ordering is required; if so, you must implement per-subscriber sequencing or partition keys to ensure one failed message blocks subsequent messages for that specific user.
+
+[high] **Ignored Rate Limiting (429 Responses)** — The design assumes a generic exponential backoff but does not account for `Retry-After` headers. Workers must be required to honor the `Retry-After` header provided by the subscriber's server to avoid being blacklisted.
+
+[high] **Missing Visibility Timeout/Locking Mechanism** — There is no mention of how the system prevents a second worker from picking up a message that is currently being processed but hasn't returned a 2xx yet (e.g., due to network lag). You must implement a "visibility timeout" or "lease" mechanism where a message is hidden from other consumers while in-flight.
+
+[med] **Vague Signing Specification** — "Sign each payload" is insufficient for a security-critical feature. Specify the algorithm (e.g., HMAC-SHA256), the data being signed (timestamp, URI, and body), and how secrets are rotated/managed per subscriber.
+
+[med] **Lack of Producer Confirmation** — The design assumes "Producers publish events," but doesn't state when the producer receives an ACK. To ensure durability, the producer must receive a confirmation only after the broker acknowledges that the message is persisted to disk.
+
+[med] **Undefined DLQ Replay Strategy** — "Operators can inspect and replay" is a manual process prone to human error. Define a programmatic way to bulk-replay messages from the DLQ back into the primary queue with original timestamps preserved.
+
+[low] **Arbitrary Payload Limit** — 256 KB is an arbitrary threshold. Provide a clear, documented path for "Large Payload" handling (e.g., providing a pre-signed S3 URL in the JSON body) to ensure developers know exactly how to handle the transition from inline to referenced data.
+
+[low] **Missing Connection Timeouts** — The design does not specify request timeouts. Workers must have strict connection and read timeouts to prevent "zombie" connections from exhausting the worker pool's file descriptors.
+
+VERDICT — **don't ship.** The design fails to address the "Distributed Systems" problems inherent in webhook delivery—specifically, message locking during processing, honoring 429 Rate Limits, and maintaining ordering integrity during retries. Shipping this would lead to race conditions and potential data corruption for customers.

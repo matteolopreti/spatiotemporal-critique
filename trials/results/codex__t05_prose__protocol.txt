@@ -1,0 +1,11 @@
+1. PRESERVE — Clear user-facing feature list: offline workspace, reconnect sync, side-by-side conflict resolution, attachment previews, and per-member folder permissions are concrete and useful.
+
+2. ISSUES — [severity high] Offline workspace is described as free for all users, then later as Premium-only — pick one truth and rewrite both mentions consistently.
+
+[severity high] “Three regional data centers, each handling half of global traffic” is mathematically impossible — change to “each handling roughly one-third” or explain active-active failover capacity.
+
+[severity med] “Ships today” conflicts with “rolling out to everyone this week” — clarify availability, e.g. “begins rolling out today and reaches all users this week.”
+
+[severity med] “Drafts now sync across devices the moment you reconnect” overpromises instant behavior — use a precise claim like “automatically sync after reconnecting” unless instant sync is guaranteed.
+
+VERDICT — Not good as-is; it contains direct factual contradictions that would confuse users and damage trust.

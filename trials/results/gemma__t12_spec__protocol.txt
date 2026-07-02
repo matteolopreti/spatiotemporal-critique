@@ -1,0 +1,13 @@
+1. PRESERVE
+- At-least-once delivery guarantee with `X-Relay-Id` for idempotency.
+- Exponential backoff strategy (up to 24 hours) leading to a Dead Letter Queue (DLQ).
+- Stateless worker architecture for horizontal scaling via consumer groups.
+- Payload capping (256 KB) with an object storage fallback for large payloads.
+
+2. ISSUES
+- [High] Retrying all non-2xx responses: Retrying 4xx errors (e.g., 400 Bad Request, 401 Unauthorized) will result in "poison pill" messages that waste resources and may trigger rate limits. Fix: Categorize errors; retry only on 5xx, timeouts, and 429 (Too Many Requests).
+- [High] Lack of ordering guarantees: Concurrent workers processing a single subscriber's events may cause out-of-order delivery (e.g., "Order Shipped" arriving before "Order Created"). Fix: Specify if the system guarantees per-subscriber ordering (e.g., via shard keys) or if it is explicitly unordered.
+- [Med] Vague signing mechanism: "Sign each payload" does not specify the algorithm or key management. Fix: Define a standard (e.g., HMAC-SHA256) and a method for subscribers to retrieve public keys/secrets.
+- [Med] Missing request timeouts: Without an explicit timeout on the worker's POST request, a hanging subscriber could hang a worker thread indefinitely. Fix: Implement a hard connection and response timeout (e.g., 10 seconds).
+
+VERDICT — The design is fundamentally sound for a standard webhook relay but lacks the necessary edge-case handling (error classification and ordering) required for production reliability.

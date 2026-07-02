@@ -1,0 +1,12 @@
+1. PRESERVE — Stateless-by-dependency design: any instance can serve any request and no authoritative local store is required. The key rotation overlap concept is good. Returning structured 401 reason codes is useful for callers if sanitized.
+
+2. ISSUES —
+- [severity high] 99.99% uptime math is wrong — 99.99% allows about 4.4 minutes/month, not nine hours; fix the target or state maintenance exclusions explicitly.
+- [severity high] “Stateless” conflicts with local disk token cache — define it as non-authoritative cache only, disposable on restart, and safe to lose.
+- [severity high] Cached tokens “avoid re-verifying signatures” is unsafe — cache only positive verification metadata keyed by token hash, still enforce expiry, key validity, revocation rules, and cache TTL no longer than token/key validity.
+- [severity med] Raw session tokens on disk are sensitive — store only keyed hashes/fingerprints, lock down permissions, encrypt if needed, and define eviction/cleanup.
+- [severity med] Expiry is checked before signature verification — do not trust token claims before verifying; either verify first or treat pre-verification expiry parsing only as an optimization with no trust decision beyond rejection.
+- [severity med] Audit event only appears on accepted flow — emit audit events for accept and reject paths with reason, key id, caller, and correlation id.
+- [severity med] Key rotation lacks failure behavior — specify how instances fetch/cache key sets, tolerate key-service outages, handle clock skew, and ensure overlap exceeds max token lifetime.
+
+VERDICT — Not good as-is: the core shape is reasonable, but the availability claim and cache/security semantics are materially incorrect.

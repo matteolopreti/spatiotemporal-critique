@@ -1,0 +1,23 @@
+1. **What’s working that must be preserved?**  
+Clear release-note structure, concrete feature bullets, named version/date, subscriber availability, and measurable performance claim. The copy is concise and customer-facing without drowning in implementation detail.
+
+2. **Steelman the current choices**  
+The feature set is framed around accounting-team workflow friction, which is plausible: CSV mapping, recurring invoice flexibility, report layout, and faster large-ledger reports are practical QoL improvements. “Roughly 30%” is appropriately qualified if the benchmark methodology exists elsewhere. Listing every supported platform is useful because release availability is a key customer question.
+
+3. **What the author is trying to achieve**  
+The author is claiming: “Ledgerly 1.8 is a broadly available, low-risk subscriber update that materially improves accountant productivity by reducing import errors, expanding invoice automation, improving report usability, and speeding large-ledger reporting.”
+
+4. **Assumptions and what breaks if wrong**  
+- Assuming Ledgerly 1.8 actually shipped on **March 12, 2025**. If wrong, the release note becomes materially misleading.  
+- Assuming the CSV auto-detection works reliably across real customer exports. If wrong, the main QoL claim may create false confidence.  
+- Assuming the 30% performance improvement is reproducible on representative ledgers. If wrong, the quantified claim is exposed.  
+- Assuming “today” refers to the release date, March 12, 2025. If this copy is reused later, “today” becomes stale or false.  
+- Assuming all listed platforms received the update simultaneously. If any lagged, availability is overstated.
+
+5. **3 highest-leverage issues only**  
+- **[severity high]** The factual claims are unverifiable from the text alone: release date, platform availability, and feature parity may be wrong — add source-backed release metadata or internal links/checks before publishing.  
+- **[severity med]** The “roughly 30%” performance claim lacks benchmark context — add baseline, test environment, report type, and sample size, or soften to “up to 30% in our benchmarks.”  
+- **[severity med]** “Available ... today” is date-fragile — replace with “available starting March 12, 2025” unless this is only ever shown on launch day.
+
+6. **Verdict**  
+Yes, this is better than leaving it vague: it is specific, useful, and mostly well-scoped. Correctness depends on verifying the factual claims and tightening the benchmark/date language; without that verification, I’d abstain from calling it publish-ready.

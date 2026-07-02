@@ -1,0 +1,30 @@
+1. **What’s working that must be preserved?**
+
+The intent is clear: wrap `perform_get_request(url)` in retry behavior, return the first successful `200` response, warn on non-200 responses, handle network failures, and return `None` when no attempt succeeds. The simple control flow and small surface area are worth preserving.
+
+2. **Steelman the current choices.**
+
+Using `attempts` as a total retry budget is a reasonable API. Returning `None` on failure can be fine for a low-level helper if callers are expected to branch on absence. Printing warnings may also be acceptable for a toy script or teaching example. Catching broad exceptions can be defensible if the goal is “never crash the caller during transient network instability.”
+
+3. **What the author is trying to achieve.**
+
+The author is trying to make HTTP GET calls more reliable by retrying transient failures up to a caller-specified limit, while returning a successful response immediately and otherwise failing quietly with diagnostic output.
+
+4. **Assumptions and what breaks if wrong.**
+
+- I assume `attempts` means total attempts, not retries after the first try. If wrong, the loop count may be intentional, but the docstring says “Total number of allowed attempts.”
+- I assume exceptions may occur before any `response` exists. If wrong, the `except` block is less dangerous, but real HTTP libraries commonly fail before producing a response.
+- I assume non-200 statuses are retryable here. If wrong, retrying on all non-200s may waste time or repeat bad requests.
+- I assume callers can handle `None`. If wrong, this pushes failure downstream as an `AttributeError` or incorrect behavior.
+
+5. **Three highest-leverage issues.**
+
+- **[high] Exception handler can crash while handling the exception** — `response.status_code` is referenced even when `perform_get_request` failed before assigning `response`, causing `UnboundLocalError` and masking the real network error. Concrete fix: initialize `response = None` before the `try`, and only print the status if a response exists.
+
+- **[high] Attempt count is off by one** — `range(attempts - 1)` performs fewer attempts than documented; `attempts=1` performs zero requests. Concrete fix: use `for i in range(attempts):`.
+
+- **[med] Retry behavior is inconsistent after failed HTTP statuses** — non-200 responses are retried immediately with no delay, while exceptions sleep; this can hammer an endpoint and makes retry timing inconsistent. Concrete fix: sleep after any failed attempt except the final one, whether the failure was an exception or a non-200 response.
+
+6. **Verdict.**
+
+No, as written this is not better than leaving request handling to the caller or calling `perform_get_request` directly. The retry wrapper introduces a correctness bug that can crash on the first simulated failure, and it does not honor its own `attempts` contract. Fixing the three issues above would make the design basically viable.

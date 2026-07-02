@@ -1,0 +1,25 @@
+[severity high] Strongly consistent reads are claimed, but asynchronous background replication only provides eventual consistency — use synchronous replication/quorum reads and writes, or change the guarantee to eventual consistency.
+
+[severity high] “Strict data integrity” conflicts with “eventual convergence” — define one consistency model and design around it.
+
+[severity high] “Without introducing write latency” is incompatible with strong distributed consistency — either accept write latency for replica acknowledgement/quorum commit or relax consistency guarantees.
+
+[severity high] Reads from secondary replicas can be stale under async replication — route reads to the primary, use read quorums, or add version/fencing checks.
+
+[severity high] Primary failure before async replication can lose acknowledged updates — require durable WAL plus synchronous replica acknowledgement before success.
+
+[severity high] Each node has 128GB RAM, but total cluster capacity is capped at 64GB — fix the capacity model; either per-node RAM is <=64GB, or cluster capacity exceeds one node.
+
+[severity med] “Shared memory” across distributed cluster nodes/AZs is physically misleading and likely wrong — describe it as aggregate logical cache capacity, not shared memory.
+
+[severity med] Three availability zones do not automatically provide fault tolerance with async replication — specify quorum, failover, replica promotion, and partition behavior.
+
+[severity med] Strong consistency across all distributed nodes is impossible during partitions if the system also remains available — state CAP tradeoff explicitly and reject operations when quorum is unavailable.
+
+[severity med] Cache/database coherence is unspecified — define write-through, write-around, invalidation, CDC, or transactional update semantics.
+
+[severity med] The cache is described as an intermediary to the primary database, but consistency with the database itself is not addressed — bind cache updates to DB commit order or verify reads against authoritative versions.
+
+[severity low] “Massive scale” is not credible with a 64GB total cap unless workload assumptions are tiny — provide expected working set, shard count, and eviction policy.
+
+VERDICT — don’t ship, because the design contains direct contradictions in consistency, replication, and capacity that make the proposal impossible as written.

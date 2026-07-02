@@ -1,0 +1,7 @@
+[severity med] `clamp_all([], low, high)` silently accepts invalid ranges because the list comprehension never calls `clamp` — validate `low > high` once at the start of `clamp_all` before iterating.
+
+[severity low] `clamp_all` revalidates the same range once per element for non-empty inputs — validate once, then clamp inline or call a private helper that assumes valid bounds.
+
+[severity low] behavior for unordered numeric values like `float("nan")` is undefined; `clamp(float("nan"), 0, 1)` returns `nan` — either document NaN pass-through or explicitly reject NaN inputs/bounds.
+
+VERDICT — don't ship, because `clamp_all` has inconsistent invalid-range behavior for empty versus non-empty inputs.

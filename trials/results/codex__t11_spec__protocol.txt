@@ -1,0 +1,11 @@
+1. PRESERVE — The goal of placing a caching layer between app and DB is sound, and the emphasis on reducing disk I/O, supporting hot data, sharding, and multi-AZ deployment is worth keeping.
+
+2. ISSUES — [severity high] Strongly consistent reads cannot be guaranteed by asynchronous background replication with eventual convergence — either change the claim to eventual consistency/stale-read tolerance, or use quorum/leader-based synchronous replication/read coordination.
+
+[severity high] The memory sizing is internally contradictory: each node has 128GB RAM, but total cluster capacity is capped at 64GB shared memory — define whether capacity is per-node, aggregate, usable after replication, or a separate shared-memory pool.
+
+[severity med] “Strict data integrity” is asserted but no cache invalidation/write-through/write-around policy is specified — define how writes, deletes, TTLs, DB commits, and cache refreshes preserve correctness.
+
+[severity med] Three availability zones do not automatically provide fault tolerance if consistency and failover behavior are undefined — specify replica placement, quorum rules, AZ-loss behavior, and whether stale reads are allowed during failover.
+
+VERDICT — Not good as-is: the central consistency claim contradicts the stated replication design, and the capacity numbers are impossible to reconcile.

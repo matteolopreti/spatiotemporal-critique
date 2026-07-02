@@ -18,6 +18,8 @@ AI, Perplexity) — every paid call is spend-gated. Python stdlib only.
 - Run a review with the panel: `python3 external_critic.py yourfile --panel`
 
 ## Docs
-- [README](https://github.com/matteolopreti/spatiotemporal-critique/blob/main/README.md): full protocol spec, install, FAQ, changelog
+- [README](https://github.com/matteolopreti/spatiotemporal-critique/blob/main/README.md): what it is, install, FAQ
+- [PROTOCOL.md](https://github.com/matteolopreti/spatiotemporal-critique/blob/main/PROTOCOL.md): the full framework specification (mandates, dials, Awake/Sleep stages)
 - [SKILL.md](https://github.com/matteolopreti/spatiotemporal-critique/blob/main/SKILL.md): the Claude Code skill operating procedure (paste presets)
-- [EXTERNAL_CRITIC.md](https://github.com/matteolopreti/spatiotemporal-critique/blob/main/EXTERNAL_CRITIC.md): external-model setup, capability probe, API keys, cloud routing
+- [EXTERNAL_CRITIC.md](https://github.com/matteolopreti/spatiotemporal-critique/blob/main/EXTERNAL_CRITIC.md): external-model setup, capability probe, API keys, cloud routing, trust contract
+- [CHANGELOG.md](https://github.com/matteolopreti/spatiotemporal-critique/blob/main/CHANGELOG.md): version history (self-gated releases)

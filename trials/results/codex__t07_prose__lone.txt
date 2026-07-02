@@ -1,0 +1,13 @@
+[severity high] February 30, 2024 is not a real date — change to a valid release date.
+
+[severity high] Claims the update “significantly reduce[s] the overall application size” while the new expansion “add[s] approximately 1.2GB to the initial download size” — reconcile the size claim with actual net download/install size numbers.
+
+[severity med] Says the game runs fluidly “even on older hardware” while adding 4K textures and a massive planetary system — qualify supported device specs or explain adaptive texture/performance scaling.
+
+[severity med] Calls version `2.5.0` a “latest major update” — if using semantic versioning, `2.5.0` is typically a minor release, not major; either call it a major content update or bump to `3.0.0`.
+
+[severity low] “Critical bug fixes” includes “minor visual artifacts,” which weakens the category — split critical fixes from minor polish fixes.
+
+[severity low] “Completely overhauled the underlying engine architecture” is too absolute without evidence — replace with specific engineering changes or measurable performance claims.
+
+VERDICT — don’t ship, because the release date is invalid and the core size/performance claims contradict the listed features.

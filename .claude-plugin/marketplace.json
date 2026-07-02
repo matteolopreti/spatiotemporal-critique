@@ -1,0 +1,38 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "spatiotemporal-critique",
+  "owner": {
+    "name": "matteolopreti"
+  },
+  "metadata": {
+    "description": "Balanced AI code & writing review for Claude Code — a preserve-first review protocol plus a multi-model critic panel for a genuinely independent second opinion (local Ollama, subscription CLIs, or cloud, every paid call spend-gated)."
+  },
+  "plugins": [
+    {
+      "name": "spatiotemporal-critique",
+      "source": "./",
+      "description": "Balanced, intent-anchored review protocol that replaces the lone critic: preserves what works, steelmans choices, sizes to the task, and adds an independent external-model critic panel (different model families, capability-probed, spend-gated) for uncorrelated errors. Includes zero-config panel setup (--init) and a deterministic capability probe.",
+      "author": {
+        "name": "Matteo Lopreti",
+        "url": "https://github.com/matteolopreti"
+      },
+      "category": "development",
+      "homepage": "https://matteolopreti.github.io/spatiotemporal-critique/",
+      "keywords": [
+        "code-review",
+        "review",
+        "critique",
+        "second-opinion",
+        "multi-model",
+        "external-critic",
+        "red-team",
+        "preserve-first",
+        "steelman",
+        "balanced-review",
+        "ollama",
+        "independent-review",
+        "quality"
+      ]
+    }
+  ]
+}

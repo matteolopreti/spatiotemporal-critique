@@ -1,0 +1,11 @@
+1. PRESERVE
+*   The core validation sequence: Extract $\rightarrow$ Expiry $\rightarrow$ Signature $\rightarrow$ Audit Event.
+*   The rotation logic (24h cycle with 6-hour overlap).
+*   The requirement for machine-readable reason codes in 401 responses.
+
+2. ISSUES
+*   [High] Availability Math: 99.99% uptime allows for ~4.3 minutes of downtime per month, not nine hours (which is 99.1%). Fix: Recalculate the allowed downtime based on the actual required SLA.
+*   [High] Cache Invalidation/Revocation: The design describes a "stateless" service with local disk caches but fails to address how a revoked token is invalidated across multiple instances. Fix: Define a revocation propagation mechanism (e.g., a broadcast signal or a very short TTL) to ensure consistency.
+*   [Med] Disk I/O Bottleneck: Using `/var/cache` for every validation introduces significant latency compared to memory. Fix: Specify an in-memory LRU cache and clarify if the disk cache is intended for persistence across restarts or purely for performance.
+
+VERDICT — Not good as-is; the availability calculation is mathematically incorrect, and the distributed caching strategy lacks a revocation plan, which creates a security gap.

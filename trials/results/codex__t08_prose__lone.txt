@@ -1,0 +1,23 @@
+[severity high] “available ... today” conflicts with dated release framing if published after March 12, 2025 — replace “today” with “as of March 12, 2025” or remove the dated release line.
+
+[severity high] Claims are unsourced: release date, benchmark gain, platform availability, pricing, and feature scope cannot be verified from the text — add links/references to release notes, changelog, benchmark methodology, and subscription terms.
+
+[severity med] “roughly 30%” is too vague for a performance claim — specify baseline, test environment, dataset, before/after timings, and whether this is average, median, or best case.
+
+[severity med] “ledgers with more than 50,000 entries” is underspecified — define entry type, dataset shape, report type, and whether performance applies broadly or only to certain reports.
+
+[severity med] “CSV import now detects column headers automatically” overclaims unless detection failure modes are described — say “can detect common column headers” or document supported headers and fallback behavior.
+
+[severity med] “previews the first ten rows before committing” is ambiguous — clarify whether users can edit mappings, cancel import, and whether validation happens before any data is written.
+
+[severity med] “Recurring invoices support custom intervals from weekly to annually” is internally imprecise — “custom intervals” implies arbitrary schedules, while “weekly to annually” implies bounded presets; define exact supported intervals.
+
+[severity low] “each recurrence can carry its own note” is ambiguous — clarify whether the note applies to each generated invoice, the recurrence rule, or individual scheduled instances.
+
+[severity low] “landscape PDF layout that fits twelve months on one page” may not hold for all reports or data volumes — qualify it as “for supported twelve-month summary reports” if that is the intended scope.
+
+[severity low] “mobile app receives the same importer improvements” may be inaccurate if mobile CSV import differs from web/desktop — specify iOS and Android support and any file picker/storage limitations.
+
+[severity low] “fingerprint unlock on supported devices” is incomplete — mention whether this uses Touch ID, Android biometrics, or the platform biometric API, and whether face unlock is included.
+
+VERDICT — don’t ship, because several factual and product-scope claims are unverifiable or overbroad, especially the availability, benchmark, and “today” language.

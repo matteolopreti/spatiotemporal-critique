@@ -1,0 +1,11 @@
+1. PRESERVE
+- The compatibility statement regarding 3.x projects, plugins, and configuration files.
+- The specific feature set (schema inspection, migration previews, query workspace).
+- The description of the audit timeline (permissions, logins, schema edits).
+- The platform availability list.
+
+2. ISSUES
+- [High] "reduced query latency by 143%" — A reduction of over 100% is mathematically impossible (it implies negative time). Change to "reduced query latency by X%" (where X < 100) or "improved performance by 143%."
+- [Med] The breaking change regarding `clusterId` is buried in a paragraph of feature highlights. — Move this to its own sentence or a bulleted list to ensure users do not miss the requirement to update connection profiles before upgrading.
+
+VERDICT — Not good as-is; the 143% reduction claim is a logical error that undermines the technical credibility of the announcement.

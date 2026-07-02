@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1200px; height: 630px; overflow: hidden;
+    background: #0d1117;
+    background-image: radial-gradient(ellipse 900px 500px at 20% 0%, #1a2333 0%, #0d1117 60%);
+    font-family: -apple-system, "SF Pro Display", "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #e6edf3; display: flex; flex-direction: column; justify-content: center;
+    padding: 0 90px; position: relative;
+  }
+  .kicker { font-size: 26px; letter-spacing: 4px; text-transform: uppercase; color: #d97757; font-weight: 600; margin-bottom: 22px; }
+  h1 { font-size: 84px; font-weight: 800; letter-spacing: -2px; line-height: 1.02; margin-bottom: 26px; }
+  .sub { font-size: 34px; color: #9db2c8; line-height: 1.35; max-width: 950px; margin-bottom: 44px; }
+  .sub b { color: #e6edf3; font-weight: 600; }
+  .chips { display: flex; gap: 14px; }
+  .chip { font-size: 23px; padding: 12px 22px; border: 1.5px solid #2d3a4d; border-radius: 999px; color: #b8c8da; background: rgba(255,255,255,0.02); }
+  .chip.hot { border-color: #d97757; color: #f0a685; }
+  .verdictbar { position: absolute; right: 0; top: 0; bottom: 0; width: 14px;
+    background: linear-gradient(180deg, #2ea043 0%, #d29922 50%, #d97757 100%); }
+  .mono { position: absolute; right: 60px; bottom: 42px; font-family: "SF Mono", ui-monospace, Menlo, monospace;
+    font-size: 21px; color: #5c7189; }
+</style>
+</head>
+<body>
+  <div class="verdictbar"></div>
+  <div class="kicker">Claude Code skill</div>
+  <h1>Spatiotemporal Critique</h1>
+  <div class="sub">Balanced AI code &amp; writing review — with a <b>genuinely independent second opinion</b> from a different model family. Preserve-first. Steelman before strike.</div>
+  <div class="chips">
+    <span class="chip hot">multi-model critic panel</span>
+    <span class="chip">one-command install</span>
+    <span class="chip">free · local · stdlib-only</span>
+  </div>
+  <div class="mono">PRESERVE · ISSUES · VERDICT</div>
+</body>
+</html>

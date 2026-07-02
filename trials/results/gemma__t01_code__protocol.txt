@@ -1,0 +1,10 @@
+1. PRESERVE
+The separation of concerns between data processing (`top_scores`) and presentation logic (`format_leaderboard`) is correct and should be maintained.
+
+2. ISSUES
+[severity high] The use of a mutable default argument `seen=[]` causes the list to persist across calls. Subsequent calls will include scores from previous calls, violating the "Pure function" claim. Fix: Remove the `seen` parameter entirely or initialize it as `None`.
+[severity high] The logic returns the *lowest* scores instead of the highest. `sort()` defaults to ascending order; `[:limit]` selects the smallest values. Fix: Use `sorted(scores, reverse=True)` or `heapq.nlargest`.
+[severity med] Efficiency is $O(N \log N)$ due to full sorting. For a "top X" query, this is inefficient for large datasets. Fix: Use `heapq.nlargest(limit, scores)`.
+
+VERDICT
+Not good as-is; the code contains a fundamental Python bug (mutable default arguments) and fails its primary functional requirement (returning highest scores).

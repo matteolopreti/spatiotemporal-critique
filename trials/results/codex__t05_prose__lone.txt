@@ -1,0 +1,21 @@
+[severity high] Offline workspace availability directly contradicts itself: “available to all users at no cost” vs “requires the Premium tier” — decide the actual eligibility and state it once.
+
+[severity high] “No plan changes, no upgrade required” contradicts “requires the Premium tier” — remove one claim or clarify that existing Premium users get it at no extra cost.
+
+[severity high] “Ships today” conflicts with “rolling out to everyone this week” — say either it is available today or rolling out gradually, with dates if possible.
+
+[severity high] “Three regional data centers, each handling half of global traffic” is mathematically impossible — change to accurate traffic distribution, redundancy, or failover capacity.
+
+[severity med] “Drafts now sync across devices the moment you reconnect” overpromises instant behavior — use measurable language like “automatically sync after reconnecting.”
+
+[severity med] “Conflict resolution shows a side-by-side diff instead of silently overwriting” implies the old product silently destroyed user work — if true, acknowledge carefully; if not, rephrase to avoid suggesting prior data loss.
+
+[severity med] “Available to all users” conflicts with “enabled from Settings → Workspace → Offline” if rollout gating means some users may not see it yet — clarify who can access it during rollout.
+
+[severity med] “Cut median sync latency from 900ms to 210ms in our load tests” may imply production performance — specify this is benchmark data, or provide production metrics.
+
+[severity low] “Features you asked for most” is unsupported and vague — cite the requested areas or remove the claim.
+
+[severity low] “40+ file types” is imprecise for a release note — link to or name the supported preview types.
+
+VERDICT — don’t ship, because the copy contains direct contradictions about pricing, availability, rollout timing, and infrastructure claims.

@@ -2,10 +2,14 @@
 
 The framework is mature (v4.x); everything here is gated by the project's own rules — net-improvement, prune law, and **nothing graduates from a reasoned claim to a hard guarantee before its trial**.
 
-## Next (v4.12) — distribution
+## Shipped in v4.12
 
-- **Plugin-marketplace packaging** (`.claude-plugin/marketplace.json` + manifest) so installation becomes `/plugin marketplace add matteolopreti/spatiotemporal-critique`. ~2 hours.
-- **README split**: a one-page quickstart vs. the full spec (the one panel finding accepted but deferred in v4.11 — the README currently does too many jobs). ~half day.
+- ✅ **Plugin-marketplace packaging** — `/plugin marketplace add matteolopreti/spatiotemporal-critique`.
+- ✅ **Docs split** — README (landing) · PROTOCOL.md (spec) · CHANGELOG.md (history).
+
+## The Trial — ✅ run (2026-07-02): results in [TRIAL.md](TRIAL.md)
+
+First measurement is in: the protocol beat the lone critic on the same seat (recall up, invented problems down 2.6×), and the panel union hit 18/18 recall within its pre-stated invented-problem bound. Caveats and the format-robust counter owed by battery v2 are in TRIAL.md. The original design, kept for reference:
 
 ## The Trial — measuring what is currently only reasoned
 

@@ -1,0 +1,11 @@
+[high] Mutable default argument `seen=[]` persists across function calls — Change to `seen=None` and initialize with `if seen is None: seen = []`.
+
+[high] The function returns the *lowest* scores instead of the *highest* — Add `reverse=True` to the `.sort()` method.
+
+[high] Violation of "Pure function" claim — The presence of a `seen` list that persists state across calls makes this an impure function. Remove the `seen` parameter entirely and calculate the top scores from the input `scores` directly to satisfy the docstring.
+
+[med] Inefficient complexity — Sorting the entire list $O(N \log N)$ to get the top $K$ elements is inefficient for large datasets. Use `heapq.nlargest()` to achieve $O(N \log K)$ complexity.
+
+[low] Redundant iteration — The loop `for s in scores: seen.append(s)` is a manual reconstruction of `list(scores)`. Use `seen = list(scores)` or just operate on the input if it's already a list.
+
+VERDICT — Don't ship. The code contains a fundamental Python flaw (mutable default arguments) and fails to perform its primary stated task (returning highest scores).

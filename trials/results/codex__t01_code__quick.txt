@@ -1,0 +1,23 @@
+1. **Preserve:** The public API is simple: `top_scores(scores, limit=5)` plus `format_leaderboard(scores, limit=5)`. The docstrings state the intended contract clearly, and `format_leaderboard` cleanly separates ranking from rendering.
+
+2. **Steelman:** If `seen` were intentionally an accumulator across calls, the mutable default could be a crude cache/history mechanism. If ascending order were desired, `seen.sort()` and `seen[:limit]` would be coherent. But both conflict with the stated “pure function” and “highest first” contract.
+
+3. **Consequential claim:** The author is trying to provide a repeatable leaderboard helper where each call independently returns the top `limit` scores from the provided input, ordered from highest to lowest, with no hidden state leaking between calls.
+
+4. **Assumptions:**
+   - Scores are comparable numeric values. If wrong, `sort()` may raise or produce surprising ordering.
+   - `limit` is a non-negative integer. If wrong, slicing may silently behave oddly, especially for negative limits.
+   - Duplicate scores should be preserved. If wrong, the output may overrepresent repeated values.
+   - “Pure function” means no mutation of caller-visible or hidden shared state. If wrong, the mutable `seen` behavior might be intentional, but the docstring is misleading.
+
+5. **Highest-leverage issues:**
+   - **[high]** `seen=[]` creates shared state across calls, so results accumulate previous inputs and the function is not pure — remove `seen` from the signature and build a local list: `seen = list(scores)`.
+   - **[high]** Sorting ascending then taking `[:limit]` returns the lowest scores, not the highest — use `sorted(scores, reverse=True)[:limit]`.
+   - **[med]** `limit` edge cases are unspecified and may silently produce surprising output — either validate `limit >= 0` or document Python slicing behavior. I can’t judge which is correct without product requirements.
+
+6. **Verdict:** No, as written this is not better than leaving the behavior undefined or unimplemented. It violates its own core contract. The small corrected version would be materially better:
+
+```python
+def top_scores(scores, limit=5):
+    return sorted(scores, reverse=True)[:limit]
+```
