@@ -13,7 +13,7 @@ Helper: `external_critic.py` (dependency-free, stdlib only; returns PRESERVE / I
 
 ## Choosing the model
 
-The model is **config-first** (`CRITIC_MODEL`); never hardcode it — the in-script default is only a fallback. Pick a lineage *different from your primary model* (that is what buys the independence), and check `ollama.com/library` for the current tag, since rankings shift monthly:
+The model is **config-first** (`CRITIC_MODEL`); never hardcode it — the in-script default is only a fallback. Pick a lineage *different from your primary model*, and be precise about what that buys: **different post-training, architecture, and RLHF — not disjoint pretraining corpora** (major vendors overlap heavily on internet-scale data). That is why cross-lineage agreement is treated as corroboration and never proof. Check `ollama.com/library` for the current tag, since rankings shift monthly:
 
 - **Default / broadly runnable:** `qwen3:8b` — the in-script *floor* (a fallback only); `setup.sh` auto-picks the strongest installed model that safely fits your RAM.
 - **Stronger general:** `gemma4:12b` (probed **2/2** here — the current best local pick), `qwen3:14b` / `qwen3:32b`, or a current GLM tag (verify on `ollama.com/library`).

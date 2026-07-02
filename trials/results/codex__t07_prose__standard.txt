@@ -1,0 +1,56 @@
+1. **Preserve-List**
+
+- Clear release-note structure: title, summary, feature bullets, closing.
+- The user-facing focus is understandable: performance, content, UI, bug fixes.
+- The expansion pack, navigation UI, and bug-fix bullets are concrete enough to be useful.
+- The tone is appropriate for a game update: upbeat without being too technical.
+
+2. **Steelman Current Choices**
+
+- `Version 2.5.0` as a major update: plausible if this is a substantial feature/performance release.
+- Enthusiastic launch language: reasonable for player-facing release notes.
+- “Core optimization” and “engine architecture” language: acceptable if the audience needs a high-level explanation, not implementation detail.
+- Mentioning older hardware: valuable if performance is a selling point.
+- Listing the expansion separately: good because content additions are easier to scan in bullets.
+- Mentioning bug fixes by name: good; it signals real defects were addressed.
+- Thank-you closing: harmless and standard.
+
+Critiques that survive steelmanning: the impossible date and the internal contradiction around reduced app size versus adding 1.2GB to the initial download.
+
+3. **Author’s Actual Goal**
+
+Falsifiable claim: this release note should convince players that Nebula Explorer 2.5.0 is a polished, performance-improving update with meaningful new content, while remaining factually consistent and trustworthy.
+
+Wrong-but-plausible alternative: the goal is mainly promotional hype, where exact technical consistency matters less than excitement. Stress test: even under that reading, “February 30” and “reduce application size” alongside “adds 1.2GB to the initial download” are likely to damage trust.
+
+4. **Assumptions**
+
+- I assume this is intended as public release copy. If wrong, marketing polish matters less, but factual contradictions still matter.
+- I assume “initial download size” means the base install/download. If wrong and the 1.2GB is optional DLC, the copy needs to say that.
+- I assume February 30 was not intentional fiction. If wrong, the absurd date may be acceptable in a comedic or in-universe context.
+- I assume correctness means internal consistency, not verification against real product data. If wrong, I would need source material to validate the engine overhaul, bug fixes, and expansion size.
+
+5. **Three Angles, Merged**
+
+Domain expert: The release note has a serious packaging contradiction. You cannot claim a significantly smaller mobile app while also saying the expansion adds 1.2GB to the initial download unless compression, optional downloads, or net-size math is explained.
+
+Skeptical generalist: “February 30, 2024” is immediately disqualifying. It makes the whole release note look careless.
+
+End user: The user will like the promised performance and new content, but may be confused or annoyed if the update is framed as lighter while requiring a much larger download.
+
+Merged view: The core message is strong, but two correctness failures undermine it. Contested: whether to keep the 1.2GB disclosure prominent. Transparency favors keeping it; marketing may prefer reframing it as optional or post-install content.
+
+6. **Highest-Leverage Issues**
+
+- [high] Impossible release date: February 30, 2024 does not exist. Concrete fix: change it to a valid date, e.g. `Released February 29, 2024` or `Released March 1, 2024`.
+- [high] Size claim contradicts expansion claim: “significantly reduce application size” conflicts with “adding approximately 1.2GB to the initial download size.” Concrete fix: clarify net effect, e.g. “the base app is smaller, while the optional Galactic Frontier expansion adds approximately 1.2GB.”
+- [med] “Latest major update” plus specific release date may age poorly. Concrete fix: use “our newest major update” only if this copy is published at launch, or simply say “Version 2.5.0 introduces...”
+- [med] Performance claims are broad and unverifiable as written. Concrete fix: replace with measurable or bounded language, e.g. “reduces load times and memory usage on supported older devices.” Abstain on the actual truth of the performance improvement; no source data is provided.
+
+7. **Backward Check**
+
+Skipped: no edit history is provided; I will not invent one.
+
+8. **Verdict**
+
+As written, this is not better than leaving it as is for publication because the date and size contradiction are high-trust correctness failures. The smaller change that captures most of the gain is: fix the date, and rewrite the size sentence to distinguish base app size from optional expansion download size.

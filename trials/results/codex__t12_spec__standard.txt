@@ -1,0 +1,71 @@
+**1. Preserve-List**
+
+- At-least-once semantics are explicit, including the subscriber duplicate-handling requirement.
+- Ack-on-2xx is simple and understandable.
+- `X-Relay-Id` as an idempotency key is a good operational contract.
+- Retry window and max interval are bounded, which prevents infinite silent retry.
+- DLQ with operator replay gives a recovery path.
+- Workers holding no local state supports horizontal scaling and failure recovery.
+- Payload size cap with object-storage references avoids queue and worker overload.
+
+**2. Steelman**
+
+- Durable queue: correct core primitive for decoupling producers from delivery availability.
+- Consumer group workers: likely right if ordering is not required per subscriber or per event stream.
+- At-least-once delivery: realistic for webhooks; exactly-once over HTTP is not credible.
+- Ack only after 2xx: clean correctness rule and easy to explain to customers.
+- Exponential backoff to 15 minutes for 24 hours: reasonable default that balances recovery with bounded pressure.
+- DLQ after 24 hours: operationally sane if customers expect webhooks to be eventually replayable, not indefinitely retried.
+- Stateless workers: good default for elasticity and crash safety.
+- 256 KB cap: reasonable webhook payload bound.
+
+Critiques these choices survive: “Use exactly-once,” “store worker-local state,” and “retry forever” are worse defaults here.
+
+**3. Actual Goal**
+
+Falsifiable claim: RelayNotes is trying to guarantee durable, at-least-once webhook delivery with bounded retry behavior, replayable failure handling, horizontally scalable workers, and a clear subscriber contract for deduplication.
+
+Wrong-but-plausible alternative: RelayNotes is trying to guarantee customer-visible delivery completion within 24 hours. The note does not actually guarantee that; it only retries for up to 24 hours and then moves failures to DLQ.
+
+**4. Assumptions**
+
+- Queue visibility/ack semantics exist and are correctly configured. If wrong, events can be lost, duplicated excessively, or processed concurrently.
+- Subscriber endpoint identity and signing secrets are stored durably outside workers. If wrong, stateless workers cannot actually sign or route deliveries.
+- Retry scheduling survives worker crashes. If wrong, delayed retries may disappear or restart incorrectly.
+- Ordering is not required. If wrong, consumer-group scaling can reorder deliveries for the same subscriber or aggregate.
+- `X-Relay-Id` is stable across retry attempts for the same event. If wrong, subscribers cannot dedupe reliably.
+- Replay from DLQ preserves the original idempotency key or clearly documents when it does not. If wrong, replays may create duplicate side effects.
+- 2xx means success for all subscribers. If wrong, customers with async acceptance semantics may need a richer contract.
+- Payload references in object storage are durable, authorized, and accessible to subscribers. If wrong, large events become undeliverable even though the webhook succeeds.
+
+**5. Three Angles, Merged**
+
+Domain expert: the biggest correctness gaps are around retry scheduling durability, timeout handling, signing details, idempotency-key stability, ordering, and poison-message behavior. The design is directionally sound but underspecified at the failure-boundaries.
+
+Skeptical generalist: “durable queue” and “stateless workers” sound robust, but the note does not say what happens when workers crash after POST succeeds but before ack, when subscribers timeout, or when operators replay DLQ entries.
+
+End user: the customer needs to know whether duplicates share the same `X-Relay-Id`, how long they must retain dedupe records, how signatures are verified, whether events arrive in order, and what replay means.
+
+Merged view: no major disagreement on the core architecture. Contested: whether ordering needs to be guaranteed. The current note may be correct if ordering is explicitly out of scope, but it is a correctness bug if customers assume ordered webhook streams.
+
+**6. Highest-Leverage Issues**
+
+- [high] Idempotency key stability is implied but not guaranteed — state that `X-Relay-Id` is stable for every attempt of the same logical event, including retries and DLQ replays, or define a separate delivery-attempt ID.
+- [high] Crash/timeout boundary is underspecified — define behavior for “POST reached subscriber but worker crashed before queue ack” and for request timeout; explicitly say these can produce duplicates and are covered by the same idempotency key.
+- [high] Retry scheduling durability is unclear — specify whether retry state lives in the broker, a retry queue, or durable scheduler, and that worker crashes do not reset or lose retry attempts.
+- [med] Ordering semantics are absent — either guarantee per-subscriber/per-topic ordering with partitioning constraints, or explicitly state delivery order is not guaranteed.
+- [med] Signing contract is incomplete — define what is signed, timestamp/replay-window behavior, secret rotation expectations, and whether object-storage references are included in the signed payload.
+- [med] DLQ replay semantics are vague — specify whether replay restarts the 24-hour retry window, preserves original headers, and how operators avoid replay storms.
+- [low] Startup order includes the admin API but not why correctness depends on it — clarify whether admin API depends on workers/broker health, or remove startup order as a correctness claim if it is merely deployment sequencing.
+
+Abstain: I cannot judge whether 24 hours, 15 minutes, or 256 KB are correct product values without customer requirements or traffic/error-rate data.
+
+**7. Backward Check**
+
+Skipped. No edit history is provided; I will not invent one.
+
+**8. Verdict**
+
+The design is better than leaving the problem unspecified: the core delivery model is sound. But as a correctness design note, it needs a smaller targeted change more than a redesign.
+
+Smallest high-gain fix: add a “Failure Semantics” section covering stable idempotency keys, crash-after-POST duplicates, timeout behavior, durable retry scheduling, ordering policy, and DLQ replay semantics. That would capture most of the correctness gain without changing the architecture.

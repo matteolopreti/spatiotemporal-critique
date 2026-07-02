@@ -1,0 +1,45 @@
+### 1. Preserve-list
+*   **Core Flow:** Producer $\rightarrow$ Durable Queue $\rightarrow$ Worker $\rightarrow$ Signed POST to Subscriber.
+*   **Reliability Model:** At-least-once delivery with `X-Relay-Id` for idempotency.
+*   **Retry Strategy:** Exponential backoff (1, 2, 4... up to 15m) for a 24-hour window.
+*   **Operational Safety:** Dead-letter queue (DLQ) for manual replay/inspection.
+*   **Scalability:** Stateless workers using consumer groups.
+*   **Payload Handling:** 256 KB limit with an object storage fallback mechanism.
+
+### 2. Steelman
+*   **At-least-once delivery:** This is the industry standard for distributed systems because "exactly-once" requires heavy coordination (like 2PC) that degrades performance and availability.
+*   **Signing payloads:** Essential for webhooks; without it, any actor can spoof a request to the subscriber's endpoint.
+*   **Stateless workers:** This choice ensures that if a worker dies, another can pick up the message immediately without needing to "hand off" internal state.
+*   **256 KB limit:** Protects against memory exhaustion on the worker nodes and keeps the overhead of the queueing system predictable.
+
+### 3. Author's Goal
+The author’s goal is to define a **production-ready, scalable webhook delivery architecture** that prioritizes **durability and reliability** over strict ordering or low-latency guarantees.
+
+*   **Alternative Reading:** The author is describing a simple "fire-and-forget" proxy.
+*   **Stress Test:** This is incorrect because the inclusion of a DLQ, exponential backoff, and signing indicates a system designed to handle failure states, not just pass data through.
+
+### 4. Assumptions
+*   **Assumption:** The queue broker supports consumer groups (e.g., Kafka, Pulsar). *What breaks if wrong:* If using a simple SQS-style queue without grouping, the "scaling out" description is slightly inaccurate as it would rely on visibility timeouts rather than group offsets.
+*   **Assumption:** The "Reference to object storage" is accessible by the subscriber. *What breaks if wrong:* If the subscriber lacks credentials or network access to the bucket, the webhook becomes useless for large payloads.
+*   **Assumption:** The signing method uses a shared secret/key known to the subscriber. *What breaks if wrong:* If it's just a static token in the header, it is vulnerable to replay attacks and interception.
+
+### 5. Review
+*   **Domain Expert (Distributed Systems):** "You haven't addressed **Poison Pills**. What happens if a specific payload causes the worker to crash or return a 500? Without a max-retry-count per message, that message will cycle through the 24-hour window and clog the queue."
+*   **Skeptical Generalist:** "How do we stop a fast producer from overwhelming a slow subscriber? There is no mention of **Rate Limiting** or backpressure. If a customer's server is down/slow, our workers might just keep hammering them until they crash."
+*   **End User (Developer):** "I need to know what the signature looks like. Is it an HMAC-SHA256? And for the 256KB limit—is there a 'grace' period or is it a hard cutoff?"
+
+**Merged Review:** The design is structurally sound regarding durability but lacks **Backpressure/Rate Limiting** and **Poison Pill protection**. It assumes a "Happy Path" where retries are only caused by subscriber downtime, not by malformed data that causes worker crashes.
+
+### 6. Highest-leverage issues
+*   **[High] Lack of Rate Limiting:** Without per-subscriber rate limits (e.g., X requests/sec), a spike in producer activity could DOS the customer's endpoint. **Fix: Add a per-subscriber leaky bucket or token bucket rate limiter.**
+*   **[High] Poison Pill / Max Retries:** A message that causes an internal error will retry until it hits the 24-hour limit, wasting resources. **Fix: Implement a `max_attempts` counter (e.g., 10 attempts) before moving to DLQ, regardless of the 24-hour window.**
+*   **[Med] Ambiguous "Reference":** It is unclear if the reference is a signed URL or a public bucket link. **Fix: Specify that the reference will be a pre-signed URL for security.**
+
+### 7. Backward check
+*Skipped.*
+
+### 8. Verdict
+**The design is better than leaving it as is, but only after addressing the "Poison Pill" and Rate Limiting issues.**
+
+**Smaller change that captures most of the gain:**
+Add a **Max Attempt Limit** (e.g., 10 retries) to the retry logic. This prevents malformed payloads from cycling through the system for 24 hours, which is the highest-leverage operational risk in a multi-tenant relay service.

@@ -1,0 +1,79 @@
+**1. Preserve-List**
+
+Must survive any edit:
+
+- AetherCache is positioned as a cache between app tier and primary database.
+- The goal is high read performance for hot data while reducing database and disk pressure.
+- Sharding is appropriate for scale.
+- Avoiding extra write latency is a valid performance goal.
+- Multi-AZ deployment is directionally right for availability and fault tolerance.
+- The proposal tries to address both performance and data integrity, which is the right problem space.
+
+**2. Steelman Current Choices**
+
+- **Caching intermediary:** Sound. A cache layer is a standard way to reduce primary database load and improve hot-read latency.
+- **Strong consistency goal:** Valid if cached data affects correctness, money, permissions, inventory, or user-visible truth.
+- **Asynchronous replication:** Valid if the system prioritizes write latency and can tolerate stale reads, or if strong reads are enforced by reading from the primary/quorum instead of async replicas.
+- **Sharded memory architecture:** Sound for scale, throughput, and isolating hot partitions.
+- **128GB RAM per node:** Plausible for high-throughput cache nodes.
+- **64GB total shared-memory cap:** Could be valid only if this means a logical cache quota, metadata pool, or per-shard active dataset cap, not literal total cluster memory.
+- **Three availability zones:** Good for resilience, assuming the consistency and failover model is explicit.
+
+Critiques dropped: the use of caching, sharding, hot-data retrieval, and multi-AZ deployment are not themselves problems.
+
+**3. Actual Goal**
+
+Falsifiable claim:
+
+AetherCache is intended to improve hot-read latency and reduce primary database load while preserving correctness guarantees strong enough that applications can treat cached reads as authoritative across a distributed, multi-AZ deployment.
+
+Wrong-but-plausible alternative reading:
+
+AetherCache is only a best-effort performance cache where occasional stale reads are acceptable. Under that reading, async replication and eventual convergence are fine, but the “strongly consistent reads across all distributed nodes” claim becomes unnecessary and misleading. The current text appears to want both authoritative correctness and no write-latency cost, which is the core tension.
+
+**4. Assumptions**
+
+- I assume “strongly consistent reads” means linearizable or read-after-write consistent across nodes. If wrong, the proposal may only need clearer terminology, not architectural change.
+- I assume async background replication means secondaries can serve reads before receiving the latest write. If wrong, the replication path needs to explain how stale reads are prevented.
+- I assume “total cluster capacity capped at 64GB” refers to cache capacity, not unrelated shared metadata. If wrong, the capacity section is ambiguous rather than impossible.
+- I assume three AZs are active participants in reads/writes. If wrong, the failover and consistency guarantees may be weaker than implied.
+- I assume correctness matters more than simple cache hit rate because the text says “strict data integrity.” If wrong, the design should relax its language.
+
+**5. Three-Angle Review**
+
+**Domain expert:** The consistency model is internally contradictory. Strong distributed reads cannot be guaranteed merely through async replication and eventual convergence if replicas serve reads independently. The capacity numbers also conflict: nodes with 128GB each cannot produce a total cluster capacity capped at 64GB unless the terms refer to different pools.
+
+**Skeptical generalist:** The proposal sounds confident but uses incompatible claims. “Strong consistency,” “asynchronous replication,” “eventual convergence,” “128GB each,” and “64GB total” need definitions because the current wording lets readers believe impossible things are being guaranteed.
+
+**End user/application owner:** The key question is whether reads can be trusted immediately after writes. If yes, the design must say how. If no, the proposal should not promise strict integrity or strong consistency.
+
+Merged view:
+
+The main disagreement is not whether the architecture is useful; it is useful. The contested point is whether AetherCache is a correctness layer or a performance cache. As written, it claims to be both without paying the usual coordination cost.
+
+**6. Highest-Leverage Issues**
+
+- **[high] Strong consistency conflicts with async replication/eventual convergence** — Choose and state the real consistency model. If reads must be strongly consistent, use primary reads, quorum/consensus, synchronous replication, version validation, or write-through invalidation with read repair. If async replication remains, change the guarantee to eventual consistency or bounded staleness.
+
+- **[high] Memory capacity numbers are contradictory** — Rewrite the capacity model. Example: “Each node has 128GB RAM; usable cache capacity is capped at 64GB per node,” or “The cluster has three 128GB nodes, but the logical cache dataset is capped at 64GB.” Make clear whether the cap is per node, per shard, per AZ, or global.
+
+- **[medium] Multi-AZ fault tolerance is asserted without failover semantics** — Specify what happens during AZ loss: whether writes continue, whether reads may be stale, what quorum is required, and whether the system prefers availability or consistency during partitions.
+
+- **[medium] “Without introducing write latency” is likely overstated** — If strict integrity is required, some write-path cost usually appears through invalidation, replication acknowledgments, consensus, or versioning. Replace with a measurable claim like “does not wait for secondary replica acknowledgment” if that is the intended design.
+
+- **[low] “Shared memory” is ambiguous in a distributed cluster** — Use precise terms: node RAM, logical cache capacity, replicated dataset size, metadata pool, or shared-memory segment.
+
+Abstention: I cannot judge whether 128GB/node or 64GB total is operationally appropriate without workload size, object size, eviction policy, replication factor, expected QPS, and hit-rate targets.
+
+**7. Backward Check**
+
+Skipped. No edit history is provided; I will not invent one.
+
+**8. Verdict**
+
+As written, this is not better than leaving the architecture unspecified, because it makes correctness promises the described mechanism does not support.
+
+The smaller change that captures most of the gain is to pick one truth:
+
+- Performance cache: keep async replication, remove “strongly consistent,” promise eventual or bounded-stale reads.
+- Correctness cache: keep strong consistency, add quorum/synchronous/versioned read mechanics, and stop claiming zero write-latency impact.

@@ -56,7 +56,24 @@ QUICK = ("Answer these six about the work, then stop:\n"
          "5. The 3 highest-leverage issues only, each as: [severity high/med/low] the problem — "
          "a concrete fix. Abstain explicitly where you can't judge instead of filling.\n"
          "6. Verdict: is this genuinely better than leaving it as is?")
-CONDITIONS = {"lone": LONE, "protocol": ec.SYSTEM, "quick": QUICK}
+# The v5.0 "protocol-as-brief" condition (pre-registered in ROADMAP.md): the Standard
+# preset shipped whole to a non-Claude seat. If this doesn't beat the plain seat
+# contract, a full protocol-as-harness won't either.
+STANDARD = ("Run this review procedure on the work, in order, then stop:\n"
+            "1. Preserve-list: what's working that must survive any edit?\n"
+            "2. Steelman each current choice; drop any critique the choice survives.\n"
+            "3. State the author's actual goal as a falsifiable claim, and stress it against one "
+            "wrong-but-plausible alternative reading.\n"
+            "4. Assumptions you're making where things are unspecified, each with what breaks if wrong.\n"
+            "5. Review from ~3 in-context angles (domain expert · skeptical generalist · end user) — "
+            "then merge them, marking genuine disagreement as contested rather than resolving it.\n"
+            "6. Highest-leverage issues, ranked by leverage (severity × confidence × blast-radius), "
+            "each as: [severity high/med/low] the problem — a concrete fix. Abstain explicitly where "
+            "you can't judge instead of filling.\n"
+            "7. Backward check: skip — no edit history is provided; do not invent one.\n"
+            "8. Verdict: genuinely better than leaving it as is — and is there a smaller change that "
+            "captures most of the gain?")
+CONDITIONS = {"lone": LONE, "protocol": ec.SYSTEM, "quick": QUICK, "standard": STANDARD}
 BRIEF = "Review this work."
 
 

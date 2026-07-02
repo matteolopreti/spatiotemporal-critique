@@ -1,0 +1,39 @@
+### 1. Preserve-list
+*   **Stateless Architecture:** The requirement for horizontal scalability and ease of deployment behind a load balancer.
+*   **Validation Sequence:** The specific order (Extract $\rightarrow$ Expiry $\rightarrow$ Signature $\rightarrow$ Audit).
+*   **Rotation Logic:** The 24-hour rotation with a 6-hour overlap window.
+*   **Error Contract:** The 401 status code + machine-readable reason codes for client handling.
+
+### 2. Steelman
+*   **Statelessness:** Ensures that the system can scale linearly without complex state synchronization (like session replication) between nodes.
+*   **Local Disk Cache:** Protects the CPU from expensive cryptographic signature verification overhead on every request and prevents "hot" keys from bottlenecking the signing service.
+*   **Audit Event Emission:** Necessary for compliance, security forensics, and identifying brute-force patterns.
+*   **Reason Codes:** Reduces the need for clients to guess why a token failed (e.g., distinguishing between "Expired" vs. "Invalid Signature").
+
+### 3. Author's Goal
+**Claim:** The author intends to design a high-availability, performant gateway that minimizes latency by caching cryptographic validations while maintaining strict security through rotation and audit logging.
+*   *Wrong-but-plausible alternative:* The author is trying to design a **Stateful Session Store**. (This is incorrect because the text explicitly defines the service as stateless and notes the lack of local persistence; however, one might mistake "Disk Cache" for "Source of Truth").
+
+### 4. Assumptions
+*   **Assumption:** The Disk Cache is cleared/evicted based on a TTL or size limit. *What breaks if wrong:* If there is no eviction policy, `/var/cache` will fill the disk, causing service failure.
+*   **Assumption:** Audit events are non-blocking (asynchronous). *What breaks if wrong:* If audit emission is synchronous and the logging backend lags, TokenGate's latency will spike, potentially violating the 99.99% availability/performance targets.
+*   **Assumption:** The "Rotating Key Set" is globally available to all instances simultaneously. *What breaks if wrong:* If there is a propagation delay in key distribution, some nodes may reject valid tokens during the rotation window.
+
+### 5. Review from In-Context Angles
+*   **Domain Expert (Security/Infra):** The design lacks a **Revocation Mechanism**. Validating "Expiry" and "Signature" is insufficient if a token is compromised before it expires. There is no mention of a Blocklist or Revocation List (CRL).
+*   **Skeptical Generalist:** Why use *Disk* cache instead of *Memory*? Disk I/O is significantly slower than RAM. Unless the expected number of unique active tokens exceeds available memory, an in-memory LRU cache would be more performant.
+*   **End User (Developer):** The "machine-readable reason code" is excellent for UX, but the documentation doesn't specify if the reason codes are standardized or how they map to specific actions (e.g., `RENEW_REQUIRED` vs `INVALID_SIGNATURE`).
+
+**Merged Review:**
+*   **Contested:** The choice of **Disk Cache**. While it survives service restarts (avoiding "cold" starts), memory is the standard for high-performance validation services unless the dataset is massive.
+*   **Critical Gap:** The absence of a revocation strategy in a security-focused design.
+
+### 6. Highest-Leverage Issues
+1.  **[Severity High] Missing Revocation Strategy:** A token can be valid by signature and expiry but still be "invalid" (e.g., user logged out, account deleted). *Fix: Explicitly define how revoked tokens are handled (e.g., a distributed blacklist or very short-lived tokens).*
+2.  **[Severity Med] Cache Cold-Start/Thundering Herd:** When a new instance is added to the LB, its disk cache is empty. A surge of traffic will hit the signing service simultaneously. *Fix: Define a "warm-up" period or ensure the signing service can handle bursty traffic from cold nodes.*
+3.  **[Severity Low] Audit Event Reliability:** The design doesn't state what happens if an audit event fails to persist. *Fix: Clarify if auditing is "Best Effort" or "Hard Requirement" (where a failed audit prevents validation).*
+
+### 8. Verdict
+**Is it better than leaving it as is?** Yes. The current design is a solid infrastructure blueprint but has a significant security hole regarding revoked tokens.
+
+**Smaller change that captures most of the gain?** Add one sentence to the Validation Flow: *"Rejected tokens or revoked identifiers return 401; the system checks against a distributed revocation list during the validation flow."*

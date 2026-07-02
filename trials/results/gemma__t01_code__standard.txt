@@ -1,0 +1,45 @@
+### 1. Preserve-list
+*   The `format_leaderboard` function structure (looping over `enumerate` starting at 1) is correct and clean.
+*   The use of f-strings for formatting is the standard/idiomatic way to handle this in Python.
+*   The intention to provide a "top N" ranking utility remains the core requirement.
+
+### 2. Steelman
+*   **Choice: The `seen` parameter.** The author likely intended to implement a "persistent" leaderboard where scores are accumulated across multiple calls (e.g., tracking all-time high scores).
+*   **Choice: Sorting inside `top_scores`.** This ensures the function is self-contained; the caller doesn't need to worry about the order of the input list.
+
+### 3. Author's Goal vs. Alternative
+*   **Goal:** Provide a stateful utility that accumulates scores across multiple calls and returns the top $N$ highest values seen so far.
+*   **Alternative Reading:** The author intended to write a pure function that finds the top $N$ scores in a single list, but mistakenly used a mutable default argument (`seen=[]`) while trying to avoid re-calculating results (memoization).
+
+### 4. Assumptions
+*   **Assumption:** `scores` contains comparable numeric types. *What breaks if wrong:* If `scores` contains mixed types (e.g., `int` and `str`), `sort()` will raise a `TypeError`.
+*   **Assumption:** The user wants the top $N$ scores from the *entire history* of calls. *What breaks if wrong:* If the user actually wanted the top $N$ scores from the *current* list only, the current implementation is fundamentally broken because it leaks data between calls.
+
+### 5. Multi-angle Review
+*   **Domain Expert:** The `seen=[]` parameter is a classic Python "gotcha." Default arguments are evaluated at definition time, not execution time. This means `seen` persists across every call to `top_scores`. Furthermore, the docstring claims it is a "Pure function," but the implementation is stateful and has side effects on the default argument.
+*   **Skeptical Generalist:** The logic of appending to a list and then sorting the *entire* history every time is inefficient. If this were used in a game with thousands of scores, it would slow down exponentially as the list grows.
+*   **End User:** "I tried to see the top 5 scores for Game A, but it showed me the scores from Game B because I played them in the same session." The code fails the basic usability test due to state leakage.
+
+**Merged Review:** There is a fundamental contradiction between the docstring ("Pure function") and the implementation (Stateful/Mutable). The primary issue is the **Mutable Default Argument**, which causes data to leak between unrelated calls.
+
+### 6. Highest-leverage issues
+1. [Severity: Critical] **The `seen` list persists across calls.** Because `seen` is a mutable default argument, every call to `top_scores` appends to the same list object in memory. This violates the "Pure function" claim and causes incorrect results.
+    *   **Fix:** Remove `seen` from the signature entirely if the goal is a pure function. If state must be preserved, the caller must manage the state (e.g., passing a list in) or use a Class.
+2. [Severity: High] **Inefficient Sorting.** The current complexity is $O(N \log N)$ where $N$ is the total history of all scores ever submitted. 
+    *   **Fix:** Use `heapq.nlargest(limit, scores)` to achieve $O(N \log k)$ efficiency.
+3. [Severity: Med] **Docstring/Implementation Mismatch.** The docstring claims no side effects, but the code modifies a persistent list.
+    *   **Fix:** Update docstring or (preferably) fix the code to match the "Pure" claim.
+
+### 7. Backward check
+(Skipped per instructions)
+
+### 8. Verdict
+**Yes, this is significantly better than leaving it as is.** The current code contains a "silent" bug where data from one call will appear in the results of the next.
+
+**Smaller change that captures most gain:**
+Remove `seen=[]` and the loop/sort logic inside `top_scores`, replacing it with:
+```python
+def top_scores(scores, limit=5):
+    return sorted(scores, reverse=True)[:limit]
+```
+*(Note: This assumes the user wants the top scores of the current list. If they want a persistent history, they must pass the history into the function as an argument.)*

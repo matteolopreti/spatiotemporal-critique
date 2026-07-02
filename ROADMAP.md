@@ -9,25 +9,14 @@ The framework is mature (v4.x); everything here is gated by the project's own ru
 
 ## The Trial — ✅ run (2026-07-02): results in [TRIAL.md](TRIAL.md)
 
-First measurement is in: the protocol beat the lone critic on the same seat (recall up, invented problems down 2.6×), and the panel union hit 18/18 recall within its pre-stated invented-problem bound. Caveats and the format-robust counter owed by battery v2 are in TRIAL.md. The original design, kept for reference:
+First measurement is in: the protocol beat the lone critic on the same seat (recall up, invented problems down 2.6×), and the panel union hit 18/18 recall within its pre-stated invented-problem bound. The design, criteria (stated before running), caveats, and the format-robust counter owed by battery v2 all live in TRIAL.md; the harness is `trial_runner.py` + `trials/` (raw responses committed, re-scorable with `--report`).
 
-## The Trial — measuring what is currently only reasoned
+## v5.0 — gate status after the Trial
 
-The skill's central claims — *the protocol beats a lone critic* and *a lineage-diverse panel beats a single seat* — are design arguments, not measurements (n = 1). The trial converts them, using the machinery the repo already has:
+**Gate 1 (panel value) — passed:** union recall 18/18 within the invented-problem bound (TRIAL.md, criteria pre-stated).
+**Gate 2 (protocol-as-brief, the cheap falsification) — run 2026-07-02, verdict: diminishing returns.** Shipping the whole Standard preset to a non-Claude seat cut invented problems further (codex: 11 → 8) at unchanged recall — a real but modest gain that does **not** justify a new harness architecture by itself. Recall was ceilinged by battery v1, so the discriminating experiment still owes a **harder battery** (artifact-scale, subtler flaws).
 
-**Fixture set.** 12–16 small artifacts across the real use surface (code with planted bugs, prose with planted contradictions, specs with planted drift) **plus clean decoys containing no defect at all** — the decoys are non-negotiable, because the protocol's core promise is *fewer invented problems*, which only a false-positive measure can test.
+**Remaining before any v5.0 build:** battery v2 (artifact-scale fixtures + a format-robust findings counter) · the orchestrator contract (what a non-Claude runner must honor: mandates, abstention, no green lights, intent stays human) · the synthesis-ownership decision (current doctrine: the reducer stays with the owner-side model) · one strong second-lineage seat with real quota headroom.
 
-**Decorrelated authorship.** Half the defects planted by a non-Claude lineage (codex/gemma), half by Claude; each seat is scored only on artifacts its own lineage did not author. (Lesson from prior work: a fixture whose author also wrote the answer key is a worked example, not a blind test.)
-
-**Grading.** The existing deterministic anchor + fault-word grader (`score_probe`), generalized to a per-artifact manifest — no LLM judges an LLM.
-
-**Conditions.** (1) lone-critic prompt (baseline) · (2) single probed seat under the protocol contract · (3) Quick preset · (4) panel union (up to 3 lineages).
-
-**Metrics.** Recall (planted defects named) · precision (findings that map to real defects) · invented-problem rate on the clean decoys · abstention honesty.
-
-**Falsifiable success criteria, stated before running:** the panel earns its cost only if it beats the best single seat on recall **without** a worse invented-problem rate. If it adds recall only by adding noise, the multi-seat claim fails and the docs get corrected accordingly. Estimated effort: ~1 day.
-
-## v5.0 — gated on the Trial
-
-- **Multi-council review** (up to 3 vendors, blind, union-of-findings, disagreement-first, Full tier only) is *already shipped* as `--panel`; v5.0 would extend it to a full **protocol-as-harness**: a different-lineage model running the whole spatiotemporal protocol (not just a critique seat), with a third lineage as its external check. Runs only if the Trial shows panel-grade value, and only on a budget that supports it (subscription seats first).
+- **Multi-council review** (up to 3 vendors, blind, union-of-findings, disagreement-first, Full tier only) is *already shipped* as `--panel`; v5.0 would extend it to a full **protocol-as-harness**: a different-lineage model running the whole spatiotemporal protocol (not just a critique seat), with a third lineage as its external check.
 - Standing rules carried into any v5.0: agreement — even unanimous — is corroboration, never proof; model judgment raises, only deterministic checks gate; no combined verdicts, no green lights; intent adjudication stays human.

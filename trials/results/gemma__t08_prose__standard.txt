@@ -1,0 +1,39 @@
+### 1. Preserve-list
+*   **Specific Metrics:** The inclusion of "30%," "50,000 entries," and "first ten rows" provides necessary credibility.
+*   **Categorical Structure:** Grouping by feature set (CSV, Recurring Invoices, Reports) allows for quick scanning.
+*   **Platform Coverage:** Explicit listing of all supported OS/Platforms is essential for software release notes.
+
+### 2. Steelman
+*   **Choice: Including the specific date (March 12).** This establishes a chronological record for audit trails and version history, which is critical for accounting software users who need to track when features were enabled.
+*   **Choice: Quantifying performance gains.** By specifying "ledgers with more than 50,000 entries," the author avoids the "it's faster" trap, which is meaningless without a baseline. This protects the brand from complaints of "it doesn't feel faster" on small datasets.
+*   **Choice: Focusing on "Quality-of-Life."** This signals to professional users that the dev team is listening to workflow friction rather than just chasing flashy, non-functional features.
+
+### 3. Author’s Goal
+**Falsifiable Claim:** The goal is to inform existing professional accounting users of specific functional improvements and performance optimizations to maintain retention and satisfaction.
+**Wrong-but-plausible alternative:** The goal is to generate "hype" for a new mobile app launch to acquire new users. (This is incorrect because the text focuses on ledger size, CSV mapping, and "accounting teams," which are high-intent professional concerns, not general consumer "lifestyle" features).
+
+### 4. Assumptions
+*   **Assumption:** "Subscribers" refers only to paid tiers. *What breaks if wrong:* If there is a free tier, the phrase "free update for all current subscribers" might imply that non-paying users are excluded from the update.
+*   **Assumption:** The mobile app supports the exact same CSV import functionality as the desktop/web versions. *What breaks if wrong:* If the mobile importer is a simplified version (e.g., only 5 rows), the phrase "receives the same importer improvements" becomes misleading.
+
+### 5. In-Context Review
+*   **Domain Expert (Accounting Software):** The CSV import description is good, but "detects column headers automatically" needs a caveat—does it handle multi-word headers or non-standard delimiters? Also, for "Recurring invoices," does the note apply to the *generation* of the invoice or just the record?
+*   **Skeptical Generalist:** Why is "fingerprint unlock" listed alongside accounting features? It feels like a "filler" feature. Is it actually useful for an accountant who might be using a desktop machine? 
+*   **End User (Accountant):** The landscape PDF layout is the most important part of this for me—does it include all columns or just a subset? The text doesn't say.
+*   **Merged Review:** The text is technically sound but lacks "impact" clarity. The distinction between what happens on mobile vs. desktop regarding the CSV importer is slightly ambiguous.
+
+### 6. Highest-Leverage Issues
+*   [Med] **Ambiguous Mobile Parity:** The phrase "receives the same importer improvements" is a "trust me" statement. It doesn't confirm if the *auto-detection* and *preview* features are actually present on mobile.
+    *   **Fix:** Change to: "The mobile app now includes the auto-detecting CSV importer and adds fingerprint unlock..."
+*   [Low] **Parallelism in Performance/Mobile Paragraph:** The jump from "30% faster" to "mobile app" is a bit jarring because they are different types of updates (Performance vs. Feature).
+    *   **Fix:** Use a transitional word or separate the mobile update into its own short sentence to ensure it doesn't get lost in the performance data.
+
+### 7. Backward Check
+*Skipped.*
+
+### 8. Verdict
+**Is it better than leaving it as is?** Yes, because the current phrasing of "same importer improvements" creates a potential support bottleneck if a mobile user cannot find the auto-detection feature.
+
+**Smaller change that captures most gain:**
+Change: *"The mobile app receives the same importer improvements and adds fingerprint unlock on supported devices."*
+To: *"The mobile app now supports the auto-detecting CSV importer and adds fingerprint unlock on supported devices."*

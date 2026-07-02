@@ -1,0 +1,64 @@
+**1. Preserve-List**
+
+- Clear user-facing structure: headline features first, technical improvement second, closing availability note.
+- Strong concrete claims where they are coherent: side-by-side conflict resolution, 40+ attachment previews, per-member permissions.
+- Good emphasis on user benefit: no silent overwrites, faster sync, offline work, shared-folder control.
+- Tone is release-note appropriate: direct, confident, not over-marketed.
+
+**2. Steelman Current Choices**
+
+- “Ships today” plus “rolling out this week” can coexist if release begins today and reaches all users over the week. No critique needed unless “ships today” implies universal availability today.
+- Mentioning infrastructure details can be useful for credibility with technical users.
+- “The moment you reconnect” is acceptable as release-note shorthand if sync begins immediately after reconnect, not literally completes instantly.
+- “Features you asked for most” is plausible community-facing language, but only survives if backed by feedback data.
+
+**3. Actual Goal**
+
+Falsifiable claim: this copy is meant to announce Streamline 3.2 accurately, emphasizing offline work, safer sync, faster performance, broader previews, and better folder permissions without misleading users about availability, pricing, or technical behavior.
+
+Wrong-but-plausible alternative reading: this is trying to maximize launch excitement even if some claims are imprecise. If that were the goal, the contradictions might be tolerated as hype. In correctness mode, that reading fails because release notes must prevent user confusion and support burden.
+
+**4. Assumptions**
+
+- Assumption: offline workspace availability matters to users immediately. If wrong, the pricing contradiction is less damaging but still inaccurate.
+- Assumption: “all users at no cost” and “Premium tier” refer to the same offline workspace feature. If wrong, the text needs clearer separation between a free offline workspace and a Premium-only setting.
+- Assumption: “three regional data centers” is literal. If wrong, the infrastructure sentence may just be poorly worded.
+- Assumption: load-test numbers are real. I can’t verify them from the text; if wrong, the performance claim is legally and reputationally risky.
+- Assumption: this is customer-facing release copy, not an internal draft. If wrong, some roughness is acceptable, but contradictions still need fixing before publication.
+
+**5. Three Angles, Merged**
+
+Domain expert: the infrastructure claim is mathematically inconsistent: three data centers cannot each handle half of global traffic. The latency claim may be fine, but the capacity distribution undermines trust.
+
+Skeptical generalist: the biggest problem is the direct contradiction around offline workspace pricing: “available to all users at no cost” versus “requires the Premium tier.”
+
+End user: I would not know whether I can use offline workspace, whether I need to upgrade, or whether “rolling out to everyone this week” includes me.
+
+Contested: “ships today” versus “rolling out this week” is only a problem if “ships” is intended to mean full availability. It can be correct if launch begins today.
+
+**6. Highest-Leverage Issues**
+
+- [high] Offline workspace availability contradicts itself — choose one truth and state it once.  
+  Concrete fix: either “The new offline workspace is available to all users at no cost” or “The new offline workspace is available on Premium from Settings → Workspace → Offline.” Do not include both.
+
+- [high] Data center traffic claim is impossible as written — three regions cannot each handle half of global traffic.  
+  Concrete fix: change to something like “rebuilt the sync fabric across three regional data centers, distributing global traffic across regions,” or provide the actual split.
+
+- [med] “Ships today,” “rolling out to everyone this week,” and “available to all users” create availability ambiguity — clarify launch timing.  
+  Concrete fix: “Streamline 3.2 begins rolling out today and will reach all users by the end of the week.”
+
+- [med] “The moment you reconnect” may overpromise sync completion — make it precise.  
+  Concrete fix: “Drafts begin syncing across devices as soon as you reconnect.”
+
+- [low] “Features you asked for most” is unverifiable from the copy — abstain on factual correctness without feedback data.  
+  Concrete fix if unsupported: “Streamline 3.2 includes offline workspace, safer draft sync, attachment previews, and per-member folder permissions.”
+
+**7. Backward Check**
+
+Skipped. No edit history is provided; I’m not inventing one.
+
+**8. Verdict**
+
+Not better to leave as is. The current copy has two correctness failures that would confuse users and damage credibility.
+
+Smaller change that captures most of the gain: fix only the offline-workspace pricing/eligibility contradiction and the “three data centers each handling half” sentence. Those two edits address the highest-risk problems while preserving almost all of the draft.

@@ -1,0 +1,38 @@
+### 1. Preserve-list
+*   The core architectural components (API Gateway, Scheduler, Worker Pool, Result Store).
+*   The specific job schema fields (id, queue, payload, priority, attempts, lease_owner, lease_expires_at, status).
+*   The mechanism of "Lease" ownership for concurrency control.
+*   The 30-day DLQ retention policy.
+
+### 2. Steelman
+*   **Choice: Boot-time validation of handlers.** Defense: By forcing the Gateway to validate handler names against the Worker Pool during startup, you prevent "silent failures" where a user submits a job that would never be processed because of a typo in the handler name. This ensures the system is in a valid state before accepting traffic. (Critique dropped).
+*   **Choice: Lease-based locking.** Defense: Using `lease_owner` and `lease_expires_at` allows for distributed processing without a centralized lock manager, ensuring that if a worker dies, the job eventually becomes available again. (Critique dropped).
+
+### 3. Author's Goal
+**Claim:** The author intends to provide a technically coherent specification for a production-ready managed job queue.
+**Alternative:** The author is providing a "spot the error" test where the text contains deliberate logical contradictions to see if the reviewer identifies them.
+
+### 4. Assumptions
+*   **Assumption:** "Managed service" implies high availability and persistence. *Break:* If this is actually a local-only script, the overhead of an API Gateway/Scheduler split might be over-engineered.
+*   **Assumption:** The Result Store is a separate database entity. *Break:* If the result store is just a field in the Job record, the "Result Store" component description is redundant.
+
+### 5. Review Angles
+*   **Domain Expert (Distributed Systems):** Identifies a **Circular Dependency/Ordering Paradox**. Paragraph 2 says Gateway must come online first; Paragraph 4 says Worker Pool must be available before Gateway starts. This is a physical impossibility in a sequential boot sequence. Also notes the "Lease" logic is standard but requires a clock-sync strategy (not mentioned).
+*   **Skeptical Generalist:** Confused by the conflicting timeout values. One paragraph says 30 seconds, another says 30 minutes. This makes the documentation unreliable for configuration.
+*   **End User (Developer):** Concerned about the "Boot Validation." If I add a new worker type, do I have to restart the whole Gateway? That seems like a bottleneck for scaling.
+
+**Merged Review:** The text suffers from critical logical contradictions regarding startup order and configuration values. While the architectural components are standard, the specifications are currently mutually exclusive.
+
+### 6. Highest-leverage issues
+1.  **[Severity High] Logical Contradiction in Startup Sequence.** Paragraph 2 requires Gateway $\rightarrow$ Scheduler $\rightarrow$ Workers. Paragraph 4 requires Workers $\rightarrow$ Gateway. The system cannot boot if both are true. **Fix:** Decide on a dependency graph. (Recommended: Worker Pool $\rightarrow$ API Gateway $\rightarrow$ Scheduler).
+2.  **[Severity High] Conflicting Configuration Values.** `scheduler_lease_timeout` is defined as 30 seconds in paragraph 3 and 30 minutes in paragraph 5. **Fix:** Standardize to one value (likely 30 minutes for a "batch" process).
+3.  **[Severity Med] Ambiguous Validation Scope.** It is unclear if the Gateway validates *all* handlers or only those currently registered. **Fix:** Clarify if validation is against a registry/schema or a live connection to the worker pool.
+
+### 7. Backward check
+*Skipped.*
+
+### 8. Verdict
+**Is it better than leaving it as is?** Yes. The current text is functionally broken because it provides two different instructions for the same startup sequence and two different values for the same timeout.
+
+**Smaller change that captures most gain:**
+Fix the Startup Sequence contradiction (choose one) and unify the `scheduler_lease_timeout` value.

@@ -1,0 +1,57 @@
+**1. Preserve-List**
+- Clear API shape: `top_scores(scores, limit=5)` and `format_leaderboard(scores, limit=5)` are simple and usable.
+- `limit=5` is a sensible default for a leaderboard.
+- `format_leaderboard` delegates ranking logic instead of duplicating it.
+- `enumerate(..., start=1)` correctly produces human-facing ranks.
+- Returning a joined string from `format_leaderboard` is reasonable.
+
+**2. Steelman Current Choices**
+- `seen=[]`: could be intended as a cache or accumulator across calls. But the docstring explicitly says pure and safe to call repeatedly, so this choice does not survive.
+- Appending each score into `seen`: works if the goal is “collect all submitted scores so far.” But the function claims to operate on the provided `scores`, so this critique stands.
+- `seen.sort()`: efficient in-place sorting if `seen` is owned scratch state. But here it mutates persistent/default or caller-provided state, so it does not survive.
+- `return seen[:limit]`: slicing is good because it returns a new list. But paired with ascending sort, it returns the lowest scores, not the highest.
+- `format_leaderboard`: mostly survives. Its correctness depends on `top_scores`.
+
+**3. Actual Goal**
+Falsifiable claim: this code should render the highest `limit` numeric scores from the current input only, in descending order, with no retained state or mutation across calls.
+
+Wrong-but-plausible alternative: this is meant to maintain a cumulative leaderboard across all calls. If that were true, `seen=[]` and appending would be closer to intentional, but the “Pure function” docstring and `scores` parameter strongly contradict that reading.
+
+**4. Assumptions**
+- Scores are comparable values, probably numbers. If wrong, `sort`/`sorted` may raise or produce meaningless ordering.
+- “Highest first” means descending numeric order. If lower scores are better, the docstring is wrong.
+- `limit` is a non-negative integer. If wrong, slicing may behave surprisingly, especially negative limits.
+- Duplicate scores should be preserved. If wrong, this needs de-duplication before sorting.
+- No persistent leaderboard state is desired. If wrong, state should be explicit, not hidden in a mutable default.
+
+**5. In-Context Angles**
+Domain expert: high confidence correctness bugs: mutable default argument, hidden retained state, in-place mutation, wrong sort direction.
+
+Skeptical generalist: the docstring promises one thing and the code does another. Even without Python expertise, repeated calls will produce surprising output.
+
+End user: the leaderboard can show old scores from previous calls and may rank low scores above high scores.
+
+Merged view: all angles agree this is incorrect relative to the stated behavior. No major contested point except whether cumulative state was intended; the docstring makes that unlikely.
+
+**6. Highest-Leverage Issues**
+- [high] Mutable default `seen=[]` preserves state across calls — remove `seen` from the public function or default it to `None` and create a fresh list internally.
+- [high] Sort order is wrong — use descending order: `sorted(scores, reverse=True)[:limit]`.
+- [high] Function is not pure and may mutate caller-provided `seen` — avoid in-place mutation; compute from `scores` only.
+- [med] `limit` behavior is unspecified for negative or non-integer values — either document accepted values or validate with a clear error.
+
+Concrete fix:
+
+```python
+def top_scores(scores, limit=5):
+    """Return the `limit` highest scores, highest first.
+
+    Pure function: no side effects, safe to call repeatedly.
+    """
+    return sorted(scores, reverse=True)[:limit]
+```
+
+**7. Backward Check**
+Skip — no edit history is provided; I will not invent one.
+
+**8. Verdict**
+Not correct as-is. The smallest change that captures most of the gain is replacing the body of `top_scores` with `return sorted(scores, reverse=True)[:limit]` and removing `seen` from the signature.

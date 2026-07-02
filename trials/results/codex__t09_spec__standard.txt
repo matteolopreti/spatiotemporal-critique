@@ -1,0 +1,73 @@
+**1. Preserve-List**
+
+- Clear responsibility: validate session tokens for internal services.
+- Horizontal scaling goal: any instance can serve any request behind a load balancer.
+- Explicit validation pipeline: extract token, check expiry, verify signature, emit audit event.
+- Key rotation has a defined cadence and overlap window.
+- Rejected tokens return `401` with machine-readable reason codes.
+- Callers, not TokenGate, own re-authentication UX.
+
+**2. Steelman**
+
+- **Stateless service:** Right target for availability and scaling. The critique only applies because the note later adds local disk persistence.
+- **Local disk cache:** Could be intended as a performance optimization, not authoritative state. If it only caches derived verification material with strict TTLs and invalidation, it can survive.
+- **Check expiry before signature:** Could be a cheap reject path if treated as an untrusted preliminary check. It does not survive as the final correctness order.
+- **Key rotation every 24h with 6h overlap:** Reasonable if session token lifetime is shorter than, or aligned with, the overlap.
+- **Machine-readable reject reasons:** Good for callers and observability. Survives if reason codes avoid leaking sensitive validation detail.
+- **Audit event:** Correct control point, but the current flow only clearly emits after signature verification.
+
+**3. Actual Goal**
+
+Falsifiable claim: TokenGate should accept a token only when it is unexpired, cryptographically valid against an allowed signing key, compatible with key rotation, and auditable, while remaining horizontally scalable enough to meet a 99.99% availability target.
+
+Wrong-but-plausible alternative reading: TokenGate is primarily a latency cache for previously seen tokens, where a warm instance may skip cryptographic verification. That reading makes the design unsafe unless cache entries are tightly bound to token expiry, key version, validation policy version, and revocation requirements.
+
+**4. Assumptions**
+
+- Tokens are self-contained signed tokens, not opaque session IDs. If wrong, signature verification is not sufficient; TokenGate needs an authoritative session lookup.
+- There is no token revocation requirement. If wrong, a stateless local cache can accept revoked sessions.
+- Token lifetime is less than or equal to the key overlap window, or old keys are retained until all signed tokens expire. If wrong, valid tokens can fail during rotation.
+- Audit events are required for both accepted and rejected validations. If wrong, the flow may be acceptable as written, but security investigations lose failed-attempt visibility.
+- Local disk cache is only an optimization, not a source of truth. If wrong, the service is not meaningfully stateless and needs consistency/invalidation design.
+
+**5. Angles Merged**
+
+Domain expert: The biggest correctness risks are caching validation results without specifying expiry/key-policy binding, checking expiry before trusted signature verification, and miscalculating the SLA.
+
+Skeptical generalist: The note contradicts itself: “stateless” but “local disk cache.” Also, 99.99% does not allow nine hours of monthly downtime.
+
+End user/caller: Machine-readable `401` reasons are useful, but callers need stable reason-code semantics. They also need confidence that valid tokens do not randomly fail during key rotation.
+
+Contested: Local disk caching is not inherently wrong. It is acceptable as a bounded, invalidatable optimization, but unacceptable if it lets instances skip correctness checks without preserving all validation constraints.
+
+**6. Highest-Leverage Issues**
+
+- [high] `99.99% uptime` downtime math is wrong.  
+  Concrete fix: change “allows up to nine hours per month” to roughly “about 4.3 minutes per 30-day month,” or lower the target to about `98.75%` if nine hours/month is truly acceptable.
+
+- [high] “Stateless” conflicts with “local disk cache,” especially if cached tokens avoid re-verifying signatures.  
+  Concrete fix: say the service has no authoritative persistence, and define the cache as disposable optimization only. Cache entries must expire no later than token expiry and be keyed by token hash, key ID, validation-policy version, and relevant issuer/audience constraints.
+
+- [high] Cache correctness under key rotation is unspecified.  
+  Concrete fix: invalidate or version cache entries on key-set change, and require old verification keys to remain usable until every token signed by them has expired.
+
+- [med] Expiry check before signature verification can trust attacker-controlled claims.  
+  Concrete fix: describe it as an optional preliminary reject only; the authoritative flow should be: parse token safely → select key → verify signature → validate claims including expiry/audience/issuer → emit audit event.
+
+- [med] Audit behavior is underspecified for failures.  
+  Concrete fix: emit audit events for accepted and rejected tokens, with careful redaction and stable reason codes.
+
+- [low] Reason codes may leak validation detail.  
+  Concrete fix: expose coarse caller-facing codes like `expired`, `invalid`, `malformed`, while logging richer internal diagnostics separately.
+
+Abstain: I cannot judge revocation, audience/issuer validation, token binding, or audit delivery guarantees because the note does not specify the token model or threat model.
+
+**7. Backward Check**
+
+Skipped. No edit history is provided; I will not invent one.
+
+**8. Verdict**
+
+Not correct as-is. The design note has two material correctness problems: the SLA math is false, and the cache/stateless/signature-verification story is internally inconsistent.
+
+Smaller change that captures most of the gain: fix the SLA sentence and rewrite the cache paragraph to make the cache disposable, TTL-bound, key-version-aware, and never authoritative.

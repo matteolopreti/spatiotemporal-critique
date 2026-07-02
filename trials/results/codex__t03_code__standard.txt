@@ -1,0 +1,59 @@
+1. **Preserve-list**
+
+- Clear public function shape: `retry_request(url, attempts)`.
+- Early return on HTTP 200.
+- Failure path returns `None`.
+- Retry delay exists, which protects against tight retry loops.
+- `perform_get_request` is isolated, making the retry logic testable.
+
+2. **Steelman current choices**
+
+- `attempts` as a parameter is right: caller controls retry budget.
+- Returning the response object on success is useful and preserves metadata/body access.
+- Returning `None` on exhaustion is simple for callers.
+- Printing warnings may be acceptable for a small script or teaching example.
+- Catching request exceptions is necessary for retry behavior.
+- `perform_get_request` raising `ConnectionError` is a reasonable simulation.
+
+Critiques that survive steelman: the function currently crashes on the simulated failure, underuses `attempts`, and references `response` when it may not exist.
+
+3. **Author’s goal**
+
+Falsifiable claim: `retry_request(url, attempts)` should make up to `attempts` GET attempts, return immediately on status 200, tolerate ordinary request failures without crashing, and return `None` if all attempts fail.
+
+Wrong-but-plausible alternative: this is only meant to demonstrate exception handling, not be correct retry code. That reading fails against the docstring: it promises retries on failure and a total number of allowed attempts.
+
+4. **Assumptions**
+
+- `attempts` means total tries, not retries after the first. If wrong, the loop count critique changes.
+- Non-200 statuses count as failures worth retrying. If wrong, only network exceptions should retry.
+- `perform_get_request` behaves like a real HTTP client and may raise before returning a response. If wrong, the `response` bug is less severe.
+- `None` is an acceptable exhausted-failure signal. If wrong, callers may need an exception or structured result instead.
+
+5. **Three angles merged**
+
+Domain expert: the highest correctness bug is `response.status_code` inside `except`; if `perform_get_request` raises before assigning `response`, this causes `UnboundLocalError`. Also, `range(attempts - 1)` performs fewer attempts than promised.
+
+Skeptical generalist: the behavior contradicts the docstring. With `attempts=1`, it makes zero requests. With the provided simulated request, it crashes instead of retrying.
+
+End user: a caller expecting retries gets neither a successful retry loop nor a clean `None`; they get an exception on the first connection failure.
+
+Contested: whether all non-200 statuses should be retried. Retrying 500/503 is common; retrying 400/404 may be wrong.
+
+6. **Highest-leverage issues**
+
+- [high] `response` may be undefined in the `except` block, causing a crash on the first network failure — initialize `last_status = None` outside the loop and log that instead, or remove that print.
+- [high] `attempts` is off by one because `range(attempts - 1)` makes fewer attempts than promised — use `for i in range(attempts):`.
+- [med] non-200 responses warn but do not sleep, and retry policy is unclear — define retryable statuses, e.g. retry 5xx/429, do not retry most 4xx.
+- [med] broad `except Exception` can hide programming errors — catch expected request/network exceptions only.
+- [low] no validation for `attempts <= 0` — either return `None` immediately or raise `ValueError`.
+
+Abstain: I can’t judge the correct backoff strategy, timeout behavior, or retryable status list without knowing the HTTP client and production requirements.
+
+7. **Backward check**
+
+Skip: no edit history is provided; I won’t invent one.
+
+8. **Verdict**
+
+Not correct as-is. The smallest high-value fix is: change the loop to `range(attempts)`, remove the unsafe `response.status_code` access from `except`, and track/log `last_status` safely. That captures most of the correctness gain without redesigning the function.

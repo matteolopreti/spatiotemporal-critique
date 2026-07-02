@@ -1,0 +1,38 @@
+### 1. Preserve-list
+*   **The Feature Set:** The specific inclusion of Schema Inspection, Migration Previews, Adaptive Planner, Backup Validation, and Audit Timeline.
+*   **Compatibility Statement:** The explicit mention of 3.x compatibility for projects, plugins, and configs.
+*   **Breaking Change Warning:** The identification of the `clusterId` removal as a required action.
+*   **Platform Coverage:** The list of supported OS/environments (macOS, Windows, Linux, Containers).
+
+### 2. Steelman
+*   **Choice: Including "143% reduction" in the text.** This provides a concrete, quantifiable metric that appeals to performance-oriented engineers and differentiates the product from competitors who use vague terms like "significantly faster."
+*   **Choice: Placing the breaking change (`clusterId`) immediately after the compatibility claim.** This ensures that users who are looking for "will this break my current setup?" find the answer in the same visual scan, preventing them from skipping to the features and missing a critical migration step.
+*   **Choice: Listing specific alert types (stale snapshots, etc.).** This targets the actual pain points of SREs/DBAs, moving the value proposition from "we have alerts" to "we solve these specific operational risks."
+
+### 3. Author's Goal
+**Falsifiable Claim:** The goal is to communicate a seamless migration path for existing users while highlighting significant performance gains in query execution and administrative oversight.
+**Wrong-but-plausible alternative:** The goal is to generate "hype" by using large, impressive-sounding percentages (143%) to overshadow the fact that the core product remains largely unchanged from 3.x.
+
+### 4. Assumptions
+*   **Assumption:** "Reduces query latency by 143%" means the new execution time is significantly lower than the old. **Break:** If a reduction of 100% means zero latency, a 143% reduction implies negative latency (mathematically impossible). This suggests a phrasing error where the author meant "Improved performance by X%" or "Reduced latency *to* X%."
+*   **Assumption:** The `clusterId` update is a simple configuration change. **Break:** If this requires a database schema migration or data re-indexing, the current wording ("update their connection profiles") may understate the effort required, leading to user frustration.
+
+### 5. Three-in-context Angles
+*   **Domain Expert (DBA/SRE):** "The 'Adaptive Planner' needs more context. Is it a cost-based optimizer or a rule-based one? Also, how does the backup validation handle large-scale distributed clusters?"
+*   **Skeptical Generalist:** "143% reduction sounds like marketing fluff. What was the baseline? Was it a 2-row query or a 10-million-row join?"
+*   **End User (Developer):** "I just want to know if my plugins will still work and how I actually change that `clusterId` field."
+
+**Merged Review:** The text succeeds at identifying *what* is new but fails to provide the *how* for the technical users. There is a **contested** area regarding the performance metric: it is high-impact for marketing but technically confusing/impossible as phrased for an engineer.
+
+### 6. Highest-leverage issues
+*   **[Severity High] The "143% reduction" logic error.** A reduction of >100% is logically impossible in latency terms (it would mean the query finishes before it starts). **Fix:** Change to "improves query performance by up to X% [or] reduces query latency by X%."
+*   **[Severity Med] Breaking change ambiguity.** The text tells users they *must* update, but doesn't provide a destination (e.g., "See the migration guide"). **Fix:** Add a placeholder for a documentation link: "...update their connection profiles [see Migration Guide]."
+
+### 7. Backward check
+*Skipped.*
+
+### 8. Verdict
+**Is it genuinely better than leaving it as is?** Yes, because the current phrasing of the performance metric is a "hallucination" of logic that would undermine the credibility of a technical product.
+
+**Smaller change that captures most of the gain?**
+Change: `reduces query latency by 143%` $\rightarrow$ `improves query performance by [X]%`.

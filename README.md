@@ -37,7 +37,7 @@ The lone critic fails in several overlapping ways; the framework answers them **
 - *Lone critic:* "No jitter, magic number `5`, use exponential backoff — rewrote it for you." Invents a requirement, rewrites working code, never asks the goal.
 - *Spatiotemporal:* keeps the capped-retry + logging that handle the real failure mode; steelmans the fixed `5` for a fail-fast CLI; asks "bounded latency, not max reliability — confirm?"; flags the one real bug (unbounded sleep on the final attempt); verdict — one fix, ship the rest.
 
-**And here it is for real** — a GPT-lineage panel seat reviewing *this repo's own v4.10 release diff* (every release self-gates through the panel; output verbatim, trimmed):
+**And here it is for real** — a GPT-lineage panel seat reviewing *this repo's own v4.10 release diff* (releases self-gate through the panel; output verbatim, trimmed):
 
 ```text
 === PANEL CRITIC: codex-default [gpt]  (codex-cli) ===

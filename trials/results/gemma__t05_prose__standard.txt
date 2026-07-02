@@ -1,0 +1,37 @@
+### 1. Preserve-list
+*   The specific performance metrics (900ms to 210ms) provide credibility.
+*   The "Side-by-side diff" for conflict resolution is a high-value, specific feature highlight.
+*   The clear navigation path (Settings → Workspace → Offline).
+*   The inclusion of the community forum call-to-action.
+
+### 2. Steelman
+*   **Technical Detail Inclusion:** The author includes "sync fabric" and latency numbers to appeal to power users/developers who care about reliability over marketing fluff. This survives critique because it establishes a "pro" brand identity.
+*   **The Contradiction (Free vs. Premium):** The author likely intended to say that *existing* Premium users get it for free without an upgrade, but the phrasing is currently self-defeating. It survives as a "drafting error" rather than a stylistic choice.
+
+### 3. Author's Actual Goal
+**Claim:** The author intends to announce the release of Streamline 3.2 and provide clear instructions on how to access the new offline workspace features.
+**Wrong-but-plausible alternative:** The author is trying to upsell users to a Premium subscription by highlighting "Premium" features (This is incorrect because the first paragraph explicitly states no plan changes or upgrades are required).
+
+### 4. Assumptions
+*   **Assumption:** The "no cost/no upgrade" refers to current subscribers of any tier, but the author mistakenly added "Premium" in the second paragraph. *What breaks if wrong:* If it is actually free for everyone and the "Premium" mention was a leftover from a previous version's draft, the text remains confusingly restrictive.
+*   **Assumption:** The audience understands "sync fabric." *What breaks if wrong:* If the audience is purely non-technical, this phrase might be perceived as "tech-babble" that obscures the actual benefit (speed).
+
+### 5. In-Context Angles
+*   **Domain Expert (Product Manager):** The contradiction between "no cost/no upgrade" and "Premium tier" is a critical failure in release notes. It creates a support ticket loop where users will ask, "Is it free or not?"
+*   **Skeptical Generalist:** The text feels like two different drafts were smashed together. Paragraph 1 says one thing; paragraph 2 says another. It lacks a cohesive voice.
+*   **End User:** I just want to know if I can use the offline mode. This text makes me doubt whether I have access or not.
+*   **Merged Review:** There is a **contested** issue regarding the "Premium" vs. "Free" status. The technical metrics are excellent, but the contradictory access requirements undermine the entire announcement's utility.
+
+### 6. Highest-leverage issues
+1.  **[Severity High] Logical Contradiction:** Paragraph 1 says "no cost — no plan changes, no upgrade required." Paragraph 2 says "requires the Premium tier."
+    *   *Fix:* Determine the actual status. If it is free for everyone: Remove "Premium" from paragraph 2. If it is only for Premium users: Change paragraph 1 to "Available to all Premium users at no additional cost."
+2.  **[Severity Med] Information Hierarchy:** The technical "under the hood" details are placed before the actual feature list (Previews/Permissions).
+    *   *Fix:* Move the "Attachment previews" and "Shared folders" section up, as these are broader-reaching features than the sync latency stats.
+
+### 7. Backward check
+*Skipped.*
+
+### 8. Verdict
+**Yes, it needs editing.** The contradiction regarding access (Free vs. Premium) is a significant friction point that will cause user confusion and increase support volume.
+
+**Smaller change:** Fix the "Premium" vs. "No cost" discrepancy in Paragraph 2 to align with Paragraph 1.

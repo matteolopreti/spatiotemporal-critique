@@ -1,0 +1,51 @@
+1. **Preserve-list**
+
+- `clamp` is small, readable, and has explicit invalid-range handling.
+- Inclusive `[low, high]` behavior is implemented correctly for ordinary comparable values.
+- The branch order is clear and avoids cleverness.
+- `clamp_all` preserves order and keeps behavior centralized by reusing `clamp`.
+
+2. **Steelman current choices**
+
+- No type checks: good Python style if the function is meant for any mutually comparable values, not only numbers.
+- Raising `ValueError` for `low > high`: correct domain error, clearer than silently swapping bounds.
+- Returning a list from `clamp_all`: reasonable if callers expect eager materialization.
+- List comprehension: concise, preserves order, and delegates correctness to `clamp`.
+- No special NaN handling: defensible if this is a generic comparator helper rather than numeric sanitation.
+
+3. **Author’s goal**
+
+Falsifiable claim: this code aims to provide a minimal, predictable clamp utility for values that can be ordered against `low` and `high`, with invalid ranges rejected.
+
+Wrong-but-plausible alternative reading: this is a robust numeric-cleaning utility. Under that reading, `NaN`, `None`, heterogeneous numeric types, and iterator/laziness semantics matter much more. The current code does not fully satisfy that broader goal.
+
+4. **Assumptions**
+
+- `value`, `low`, and `high` are mutually comparable. If wrong, callers get `TypeError`.
+- `NaN` should pass through unchanged. If wrong, `clamp(float("nan"), 0, 1)` is incorrect because all comparisons are false.
+- `clamp_all` should return a list, not a generator. If wrong, this eagerly consumes large or infinite inputs.
+- `clamp_all` should share `clamp`’s invalid-range behavior. If wrong, the empty-input case is acceptable as-is.
+
+5. **Three angles, merged**
+
+Domain expert: the core scalar clamp is correct for ordered values, but `clamp_all([], 5, 1)` misses the invalid-range check because `clamp` is never called.
+
+Skeptical generalist: the API is simple and understandable, but the docs do not state how non-numeric values, `NaN`, or empty collections should behave.
+
+End user: ordinary usage works exactly as expected. The surprising case is passing an empty list with reversed bounds and getting `[]` instead of an error.
+
+Contested: whether `NaN` needs special handling. That depends on whether this is numeric validation or generic ordering.
+
+6. **Highest-leverage issues**
+
+- **[severity med] `clamp_all` does not reject invalid ranges for empty input** — add an upfront range check in `clamp_all`, or factor validation into a helper used before iteration.
+- **[severity low] NaN behavior is unspecified** — either document that incomparable/special floating values pass through according to Python comparison semantics, or explicitly reject/handle `math.isnan` for numeric-only use.
+- **[severity low] collection semantics are unspecified** — document that `clamp_all` eagerly returns a list, or rename/adjust if lazy iteration is desired.
+
+7. **Backward check**
+
+Skipped: no edit history is provided; I will not invent one.
+
+8. **Verdict**
+
+Yes, this is better than leaving the behavior unimplemented: the scalar function is correct and clear for normal ordered inputs. The smallest change that captures most of the gain is to validate `low > high` at the start of `clamp_all`, so empty inputs obey the same range contract.

@@ -1,0 +1,61 @@
+**1. Preserve-List**
+
+The release note is clear, compact, and organized around user-visible changes. Keep the practical accounting-team framing, the specific feature descriptions, the free-update statement if true, and the benchmark caveat style around “roughly 30%” rather than overstating precision.
+
+**2. Steelman Current Choices**
+
+The feature set is coherent for accounting teams: CSV import preview, recurring invoice flexibility, export layout, report speed, and mobile unlock all fit a quality-of-life release.
+
+The concise paragraph format is appropriate for release notes. It avoids hype and mostly states what changed.
+
+The performance claim is useful because it names a workload threshold: ledgers over 50,000 entries. That specificity should survive, but the claim still needs evidence.
+
+The “available today” phrasing works only if this was published on March 12, 2025. If republished later, it becomes stale.
+
+**3. Actual Goal**
+
+Falsifiable claim: this text aims to accurately announce Ledgerly 1.8 as a March 12, 2025 release, summarizing subscriber-facing product changes, performance gains, platform availability, and pricing impact.
+
+Wrong-but-plausible alternative reading: it might be intended as fictional sample copy for a made-up accounting SaaS. If so, factual verification matters less, but internal plausibility still matters. In correctness mode, I’m treating it as a real release note.
+
+**4. Assumptions**
+
+I assume Ledgerly is a real public product. If wrong, the main issue shifts from factual accuracy to plausibility.
+
+I assume “today” means March 12, 2025, the release date stated in the first sentence. If wrong, the availability sentence is temporally incorrect as of July 2, 2026.
+
+I assume the copy is meant for external publication. If it is internal-only, unsupported benchmark and platform claims may be acceptable if backed elsewhere.
+
+I assume public corroboration should exist for a real release. If Ledgerly 1.8 was private or behind a customer portal, I cannot fully judge truth from public sources.
+
+**5. Three Angles Merged**
+
+Domain expert: the features are plausible and relevant, especially CSV import correction before commit and report export improvements. The benchmark claim needs methodology because accounting users may rely on performance for large books.
+
+Skeptical generalist: the biggest concern is factual support. I found Ledgerly’s public site positioning it as a full-service HOA/COA accounting operation rather than a conventional cross-platform software product, and I found a March 12, 2025 release note for SoftLedger, not Ledgerly, with different features. Sources: Ledgerly site and SoftLedger release notes.  
+https://www.ledgerly.com/  
+https://softledger.com/support/en/articles/10247111-release-notes-overview
+
+End user: the note tells me what improved, but not whether I need to update, whether rollout is complete on each platform, or whether fingerprint unlock changes security/admin settings.
+
+Contested: if this is based on private release data, the prose may be correct despite weak public corroboration. From public evidence alone, the release/version/platform claims are not confirmed.
+
+**6. Highest-Leverage Issues**
+
+[severity high] The central factual claim is unverified publicly: I could not corroborate “Ledgerly 1.8” or the listed March 12, 2025 features, and public Ledgerly materials describe a service/platform, not clearly a Windows/macOS/iOS/Android app suite. Concrete fix: add an internal/public release-note source, or revise to “Ledgerly’s March 2025 update…” and remove exact version/platform claims unless documented.
+
+[severity high] The copy may be conflating Ledgerly with another product. SoftLedger has March 12, 2025 release notes, but they list unrelated changes. Concrete fix: verify product name and release source before publication.
+
+[severity medium] “Available … today” is date-dependent and stale outside the original publication date. Concrete fix: change to “available as of March 12, 2025” or “rolling out beginning March 12, 2025.”
+
+[severity medium] “Reduced report generation time by roughly 30%” lacks enough benchmark detail to be auditably correct. Concrete fix: specify baseline/version, report type, dataset size, environment, and whether 30% is median, average, or best-case.
+
+[severity low] “Fingerprint unlock on supported devices” is underspecified for business/accounting buyers. Concrete fix: say whether it supports Touch ID, Face ID, Android biometrics, admin policy controls, or device-local biometric unlock generally.
+
+**7. Backward Check**
+
+Skipped. No edit history is provided; I will not invent one.
+
+**8. Verdict**
+
+Not ready as-is for correctness-sensitive publication. The smaller change that captures most of the gain is to verify the release source, replace “today” with an absolute availability date, and qualify or document the platform and benchmark claims.
