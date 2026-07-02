@@ -37,7 +37,7 @@ For a fast pass, run these six and stop:
 2. Steelman my current choices — where might they already be right?
 3. State what you think I'm actually trying to achieve, as a specific consequential claim I can confirm or correct. *(Skip if my goal is already formal.)*
 4. List the assumptions you're making where I left things unspecified, and what breaks if each is wrong.
-5. The 3 highest-leverage issues only, each with a concrete fix. *(Taste work: the 3 places it reads as generic, with a sharper alternative each.)*
+5. The 3 highest-leverage issues only, each with a concrete fix — abstain explicitly where you can't judge (say what's missing) instead of filling. *(Taste work: the 3 places it reads as generic, with a sharper alternative each.)*
 6. Verdict: is this genuinely better than leaving it as is? If not, say so.
 
 ## Standard preset (paste)
@@ -46,7 +46,7 @@ A panel + one backward check, when the Quick six aren't enough. (For the heavier
 2. Steelman each current choice; drop any critique the choice survives.
 3. State my actual goal as a falsifiable claim I can confirm or correct, and stress it against one wrong-but-plausible alternative reading. *(Skip if my goal is already formal.)*
 4. Assumptions you made where I left things unspecified, each with what breaks if wrong.
-5. Review from ~3 in-context angles (domain expert · skeptical generalist · end user) — same-model personas, *not* true independence — then merge them and mark genuine disagreement as contested rather than resolving it.
+5. Review from ~3 in-context angles (domain expert · skeptical generalist · end user) — same-model personas, *not* true independence — then merge them, mark genuine disagreement as contested rather than resolving it, and record any explicit abstention as a coverage gap, not agreement.
 6. Highest-leverage issues, ranked by leverage (severity × confidence × blast-radius), each with a concrete fix. *(Taste: where it reads generic, with a sharper alternative.)*
 7. Backward check *(only if there's a real edit history)*: which logged change introduced each problem? Localize it — don't invent a history.
 8. Verdict: genuinely better than leaving it as is — and is there a smaller change that captures most of the gain?
@@ -59,6 +59,7 @@ Critics run by one model in one context only *approximate* independence (same we
                                  # (cloud: store a key once as critic-api-key-<provider> in your OS
                                  #  secret store — the helper finds it itself; see EXTERNAL_CRITIC.md)
 python3 external_critic.py --probe          # availability != capability: does this seat actually critique?
+python3 external_critic.py --probe-all      # score EVERY installed local model, ranked (one command)
 python3 external_critic.py path/to/work --brief "focus here" --mode correctness   # --mode taste; --depth full for rationale
 python3 external_critic.py --configure      # pick 1-3 capable seats across lineages and REMEMBER them
 python3 external_critic.py path/to/work --panel   # RUN the remembered panel: each seat critiques -> you synthesize

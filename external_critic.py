@@ -32,6 +32,10 @@ Usage:
     # FAIL = a null seat that summarizes, UNAVAILABLE = it didn't answer). The score is a
     # quantitative proxy that ranks the panel. Deterministic, non-LLM grader.
 
+    python3 external_critic.py --probe-all
+    # score EVERY installed local Ollama chat model on the floor battery, ranked — one
+    # command to see what this laptop can actually run (results land in the registry).
+
     python3 external_critic.py --configure [--auto] [--project] [--choose "m1,m2"]
     # PICK your panel: configured providers -> grouped-by-lineage table -> pick 1-3 (or --auto
     # for the score-ranked, free-first suggestion) -> REMEMBER it (critic_panel.json). Re-run to
@@ -59,7 +63,11 @@ Config (env / .env — a set, non-empty env var always wins):
     .env           setup.sh writes its chosen model here (real env vars win).
     CRITIC_BASE_URL  set → OpenAI-compatible endpoint, base incl. the version path
                    (e.g. .../v1); a hosted, different-lineage model sent off-machine.
-                   Empty = local Ollama (private, default).
+                   Empty = local Ollama (private, default). The literal value
+                   "codex-cli" routes to the OpenAI Codex CLI on PATH instead — a
+                   SUBSCRIPTION seat (ChatGPT plan): no key, no per-call bill.
+                   There CRITIC_MODEL is ignored (it's an Ollama/cloud id); pick a
+                   specific codex model with CRITIC_CODEX_MODEL if you must.
     CRITIC_API_KEY   Bearer token for CRITIC_BASE_URL. Resolution: env / .env first;
                    else, when CRITIC_BASE_URL matches a known provider, the key is
                    read from the OS secret store (item critic-api-key-<provider> —
@@ -74,8 +82,10 @@ import json
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 
@@ -135,6 +145,11 @@ OPENAI_OPTIONS = {"temperature": OPTIONS["temperature"]}
 # (private; nothing leaves the box). CRITIC_API_KEY is sent as a Bearer token.
 BASE_URL = _cfg("CRITIC_BASE_URL", "")
 API_KEY = _cfg("CRITIC_API_KEY", "")
+if BASE_URL == "codex-cli":
+    # CRITIC_MODEL is an Ollama/cloud id — a shell's exported model must not leak into
+    # `codex -m` (and a 400 there would mis-register against that model). The CLI seat
+    # has its own explicit override: CRITIC_CODEX_MODEL.
+    MODEL = os.environ.get("CRITIC_CODEX_MODEL") or "codex-default"
 ENDPOINT = BASE_URL or HOST   # what actually served the critique (display + log)
 
 SYSTEM = (
@@ -145,6 +160,9 @@ SYSTEM = (
     "[severity high/med/low] the problem — a concrete fix.\n"
     "For taste/creative work, replace ISSUES with GENERIC — the places it "
     "reads as generic or safe, each with a sharper alternative.\n"
+    "If you cannot genuinely assess something (missing context, outside your "
+    "competence, truncated input), write 'ABSTAIN: <what> — <why>' instead of "
+    "inventing a finding; an honest gap beats a fabricated critique.\n"
     "End with one line: VERDICT — is this genuinely good as-is, or not, and why."
 )
 
@@ -170,11 +188,43 @@ def build_prompt(artifact, brief, intent, mode):
     return "\n".join(parts)
 
 
+# Subscription CLI seat: the OpenAI Codex CLI (detected on PATH) runs on the user's
+# ChatGPT plan — no API key, no per-call bill; quota comes from the plan itself.
+# "codex-default" = let the CLI use its configured default model (no -m flag).
+CODEX_MODELS = ["codex-default"]
+
+
+def _call_codex(model, system, prompt):
+    """Route one critique through `codex exec`: read-only sandbox, prompt on stdin,
+    final message read from -o FILE (plain stdout carries progress noise)."""
+    fd, out_path = tempfile.mkstemp(suffix=".txt")
+    os.close(fd)
+    cmd = ["codex", "exec", "--skip-git-repo-check", "--sandbox", "read-only",
+           "--color", "never", "-o", out_path, "-"]
+    if model and model != "codex-default":
+        cmd[2:2] = ["-m", model]
+    try:
+        r = subprocess.run(cmd, input=f"{system}\n\n{prompt}", capture_output=True,
+                           text=True, timeout=600)
+        if r.returncode != 0:
+            tail = (r.stderr or r.stdout).strip().splitlines() or ["no output"]
+            raise RuntimeError(f"codex exec failed ({r.returncode}): {tail[-1][:200]}")
+        with open(out_path, encoding="utf-8") as f:
+            return f.read().strip()
+    finally:
+        try:
+            os.unlink(out_path)
+        except OSError:
+            pass
+
+
 def call_model(system, prompt, model=None, base_url=None, api_key=None):
     # Per-seat overrides (--panel runs several seats); each falls back to the module global.
     model = model or MODEL
     base_url = BASE_URL if base_url is None else base_url
     api_key = API_KEY if api_key is None else api_key
+    if base_url == "codex-cli":   # subscription CLI seat — no HTTP, no key
+        return _call_codex(model, system, prompt)
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": prompt},
@@ -230,7 +280,7 @@ def log_run(artifact, mode, depth, brief, intent, model=None, endpoint=None, bas
 # artifact instead of finding its flaw ("independence-theater": a seat that adds
 # no real check still looks like a second opinion). The probe applies the
 # planted-defect discipline to the critic seat ITSELF: feed a tiny artifact with
-# ONE known flaw and check that the seat NAMES it. The grader is a deterministic,
+# planted flaws and check that the seat NAMES them. The grader is a deterministic,
 # non-LLM string check — a DIFFERENT SUBSTRATE from the seat under test — so
 # auto-excluding a null seat is a legitimate gate (gate on a different substrate;
 # only advise on a same-lineage judgment). A PASS certifies the seat genuinely
@@ -240,17 +290,21 @@ def log_run(artifact, mode, depth, brief, intent, model=None, endpoint=None, bas
 REGISTRY_PATH = _cfg("CRITIC_REGISTRY", os.path.join(_HERE, "critic_registry.tsv"))
 REPROBE_DAYS = 30  # model tags mutate; a PASS older than this is stale -> re-probe
 
-# A tiny PROSE artifact with TWO independent, blatant flaws — matched to the real use
-# case (these seats review DOCS). The capability SCORE = how many the seat NAMES (0-2):
+# A tiny PROSE artifact with THREE independent, blatant flaws — matched to the real use
+# case (these seats review DOCS). The capability SCORE = how many the seat NAMES (0-3):
 # a quantitative proxy that RANKS seats for the panel (a misrank only reorders
 # the panel; the PASS gate stays binary, PASS = score >= 1). Each flaw's diagnosis words
 # are engineered ABSENT from the artifact (so an echo/summary scores 0) and use DISTINCT
-# vocab (compatibility vs testing) so the two are separately attributable.
+# vocab so each is separately attributable. Battery v2 (v4.9): scores are comparable only
+# within a battery version — re-probe after an upgrade (the registry's newest-wins handles it).
 PROBE_ARTIFACT = (
     "Release note: this update is fully backward-compatible — no existing call needs "
-    "to change. It also removes the get_user() endpoint, so every caller must migrate "
+    "to change. It also removes the get_user() endpoint, so every caller must switch "
     "to fetch_user().\n"
     "Early benchmarks show it cuts memory use by 250%.\n"
+    "Deploy steps: ship the new code first, because the schema migration requires the "
+    "new code to be live; and run the migration before deploying, since the new code "
+    "crashes without the migrated schema.\n"
 )
 PROBE_BRIEF = "Review this for correctness, soundness, and internal consistency."
 # The capability SCORE counts flaws NAMED — but diagnosis vocabulary is OPEN-ended (a seat
@@ -259,11 +313,14 @@ PROBE_BRIEF = "Review this for correctness, soundness, and internal consistency.
 # when SOME SENTENCE pairs that flaw's SUBJECT ANCHOR with ANY critical word (below). The
 # anchor scopes the critical word to the right flaw (no cross-contamination between flaws),
 # and a summary that merely restates the subject — with no critical word in that sentence —
-# scores 0. Two flaws of DIFFERENT type: flaw A is blatant (gates PASS); flaw B is sharper
-# (a >100% reduction is impossible) so it discriminates a strong seat (2) from a shallow one (1).
+# scores 0. Three flaws of DIFFERENT type: A is blatant (gates PASS); B is sharper (a >100%
+# reduction is impossible); C is multi-step (a circular deploy order) — together they spread
+# strong (3), decent (2), and shallow (1) seats. Anchor vocab is kept DISJOINT per flaw
+# (A deliberately has no "migrate": that word belongs to C's sentences).
 PROBE_FLAWS = (
-    ("backward-compat contradiction", ("backward", "compatib", "get_user", "fetch_user", "migrate")),
+    ("backward-compat contradiction", ("backward", "compatib", "get_user", "fetch_user")),
     ("impossible >100% reduction",    ("250", "memory", "footprint")),
+    ("circular deploy/migration order", ("migration", "deploy", "schema", "ship")),
 )
 # A critical word marks a sentence as a CRITIQUE (not a restatement). Restricted to
 # epistemic/logical FAULT words — generic operational verbs ("cannot", "error", "invalid")
@@ -272,7 +329,9 @@ PROBE_FLAWS = (
 PROBE_CRITICAL = ("contradict", "inconsisten", "conflict", "breaking", "breaks", "regression",
                   "incompatible", "impossible", "unrealistic", "implausible", "nonsens",
                   "absurd", "negative", "incorrect", "wrong", "false", "more than 100",
-                  "over 100", "exceed", "makes no sense", "no sense", "not possible", "mismatch")
+                  "over 100", "exceed", "makes no sense", "no sense", "not possible", "mismatch",
+                  "circular", "chicken", "deadlock", "paradox", "cannot both",
+                  "cycl", "mutual", "each other")
 PROBE_TOKENS = PROBE_CRITICAL  # grade_probe default (the faithful --expect path passes its own)
 PROBE_MIN_LEN = 25  # below this the seat returned nothing usable (a null answer)
 
@@ -293,7 +352,7 @@ def infer_lineage(model, base_url):
     m, u = (model or "").lower(), (base_url or "").lower()
     table = [
         ("gemini", ("gemini", "gemma", "generativelanguage", "googleapis")),
-        ("gpt", ("gpt-", "openai.com", "o1-", "o3-", "o4-")),
+        ("gpt", ("gpt-", "openai.com", "o1-", "o3-", "o4-", "codex")),
         ("deepseek", ("deepseek",)),
         ("glm", ("glm", "z.ai", "zhipu", "bigmodel")),
         ("mistral", ("mistral", "mixtral", "magistral")),
@@ -312,6 +371,8 @@ def infer_lineage(model, base_url):
 def infer_cost(base_url, api_key, override):
     if override:
         return override
+    if base_url == "codex-cli":
+        return "sub"                            # subscription plan — no per-call bill
     if not base_url:
         return "free"                          # local Ollama, on this box
     return "paid" if api_key else "free"        # keyless local /v1 server = free
@@ -375,11 +436,13 @@ def _registry_records():
 
 
 def latest_per_model(recs):
-    """Newest record wins per model (append-only file; a re-probe supersedes)."""
+    """Newest record wins per (model, endpoint) — append-only file; a re-probe supersedes.
+    Keyed by BOTH so one endpoint's failure (e.g. a model id rejected by codex-cli, or a
+    quota-dead provider) can never mask the same id's PASS elsewhere."""
     out = {}
     for r in recs:                              # chronological; later overwrites
         if "model" in r:
-            out[r["model"]] = r
+            out[(r["model"], r.get("endpoint", ""))] = r
     return out
 
 
@@ -467,12 +530,58 @@ def do_probe(cost_override, artifact_path="", expect=""):
     return 0 if passed else 1
 
 
+def do_probe_all(cost_override):
+    """Probe EVERY installed local Ollama chat model with the floor battery and print a
+    ranked table — one command to score what this laptop can actually run. Local only:
+    cloud/CLI seats are probed one at a time (--probe) so nothing spends without consent."""
+    try:
+        data = json.loads(urllib.request.urlopen(f"{HOST}/api/tags", timeout=20).read())
+        ids = [m.get("name", "") for m in data.get("models", [])]
+    except Exception as e:  # noqa: BLE001
+        sys.exit(f"cannot list local models ({e}). Is Ollama running? Try `ollama serve`.")
+    chat = sorted(i for i in ids if _suitable(i))
+    if not chat:
+        sys.exit(f"no suitable local chat models at {HOST}.")
+    total = len(PROBE_FLAWS)
+    print(f"PROBE-ALL — {len(chat)} local model(s) on the floor battery ({total} planted flaws):")
+    results = []
+    for m in chat:
+        lineage = infer_lineage(m, "")
+        print(f"  probing {m} [{lineage}] …", end="", flush=True)
+        try:
+            out = call_model(SYSTEM, build_prompt(PROBE_ARTIFACT, PROBE_BRIEF, "", "correctness"),
+                             model=m, base_url="", api_key="")
+        except Exception as e:  # noqa: BLE001
+            register(m, lineage, HOST, "UNAVAILABLE", cost_override or "free", "na",
+                     str(e).splitlines()[0][:120])
+            print(f" UNAVAILABLE ({str(e).splitlines()[0][:80]})")
+            results.append((m, lineage, -1, []))
+            continue
+        score, named = score_probe(out)
+        result = "PASS" if score >= 1 else "FAIL"
+        register(m, lineage, HOST, result, cost_override or "free", score,
+                 f"floor probe: named {score}/{total}: {', '.join(named) or 'none'}")
+        print(f" {result} {score}/{total}")
+        results.append((m, lineage, score, named))
+    results.sort(key=lambda r: r[2], reverse=True)
+    print(f"\nRANKED (capability score = flaws NAMED, 0..{total}; recorded in the registry):")
+    for m, lineage, score, named in results:
+        s = "unavailable" if score < 0 else f"{score}/{total}"
+        print(f"  {m:36} {lineage:10} {s:12} {', '.join(named)}")
+    print("\nA high score certifies the READ, not independence — that still comes from lineage")
+    print("diversity. Pick the best seat per family:  python3 external_critic.py --configure")
+    return 0 if any(r[2] >= 1 for r in results) else 1
+
+
 def _suggest_panel(rows, top=3):
     """Auto-rank candidate rows -> the best seat per DISTINCT lineage (independence =
-    diversity), by score then free-first, capped at `top`. This is the suggested default
-    --configure offers (Enter / --auto). rows are [lineage, model, endpoint, cost, score]."""
+    diversity), by score then no-marginal-cost-first (free/sub before paid), capped at
+    `top`. A 'blocked' seat (latest record UNAVAILABLE — quota exhausted or unreachable)
+    is DISCARDED: a seat with no tokens is not a seat (re-probe restores it).
+    rows are [lineage, model, endpoint, cost, score]."""
+    rows = [r for r in rows if r[4] != "blocked"]
     def key(r):
-        return (_int(r[4]), r[3] == "free")
+        return (_int(r[4]), r[3] != "paid")
     best = {}
     for r in rows:
         if r[0] not in best or key(r) > key(best[r[0]]):
@@ -524,7 +633,9 @@ def _version(model_id):
 
 def discover_models():
     """Model ids the configured key/endpoint can serve. OpenAI-compat: GET /models;
-    local Ollama: GET /api/tags."""
+    local Ollama: GET /api/tags; codex-cli: the CLI's static seat."""
+    if BASE_URL == "codex-cli":
+        return list(CODEX_MODELS)
     if BASE_URL:
         url = f"{BASE_URL.rstrip('/')}/models"
         headers = {"Authorization": f"Bearer {API_KEY}"} if API_KEY else {}
@@ -553,7 +664,7 @@ def do_discover():
     print(f"DISCOVERED {len(chat)} suitable chat models at {ENDPOINT}  (newest-first · cost={cost}):")
     for i in chat:
         name = i.replace("models/", "")
-        rec = scored.get(name) or scored.get(i)
+        rec = scored.get((name, ENDPOINT)) or scored.get((i, ENDPOINT))
         if rec and rec.get("probe") == "PASS":
             mark = f"score {rec.get('score', '?')}"
         elif rec and rec.get("probe") in ("FAIL", "UNAVAILABLE"):
@@ -692,10 +803,25 @@ def _candidate_rows():
             # A multi-lineage provider (Cloudflare, Ollama Cloud) serves many families:
             # the seat's lineage comes from the model id, not the provider label.
             lin = infer_lineage(name, "") if lineage == "(varies)" else lineage
-            row = [lin.lower(), name, base, "paid", "unprobed"]       # paid stays UNPROBED (consent-gated)
+            rec = scored.get((name, base))
+            # Latest record UNAVAILABLE (quota exhausted, dead id) -> 'blocked': shown,
+            # but the suggestion discards it — a seat with no tokens is not a seat.
+            mark = "blocked" if rec and rec.get("probe") == "UNAVAILABLE" else "unprobed"
+            row = [lin.lower(), name, base, "paid", mark]             # paid stays UNPROBED (consent-gated)
             catalog.setdefault(name, row)             # full catalog: --choose can name any servable model
             if name not in listed and n < 4:          # top-4 per provider in the BROWSE table
                 table.append(row); listed.add(name)
+    if shutil.which("codex"):                          # subscription CLI seat — plan-covered, no key
+        for mid in CODEX_MODELS:
+            seen.add(mid)
+            rec = scored.get((mid, "codex-cli"))
+            if rec and rec.get("probe") == "PASS":
+                continue                               # already in the table via the registry loop
+            mark = "blocked" if rec and rec.get("probe") == "UNAVAILABLE" else "unprobed"
+            row = ["gpt", mid, "codex-cli", "sub", mark]
+            catalog.setdefault(mid, row)
+            if mid not in listed:
+                table.append(row); listed.add(mid)
     return table, seen, catalog
 
 
@@ -762,8 +888,10 @@ def do_configure(project, explicit, auto):
     path = write_panel(selected, seen, project)
     print(f"\n✓ saved {len(selected)}-critic panel -> {path}")
     for s in selected:
-        spend = "" if s["cost"] == "free" else "  [PAID — --panel asks before spending]"
-        print(f"    {s['model']}  [{s['lineage']}]  {s['cost']}  score={s['score']}{spend}")
+        spend = "  [PAID — --panel asks before spending]" if s["cost"] == "paid" else ""
+        # An unprobed seat may be saved (it backfills a missing lineage) but never silently:
+        probe_hint = "  [UNPROBED — certify it (--probe) before trusting]" if s["score"] == "unprobed" else ""
+        print(f"    {s['model']}  [{s['lineage']}]  {s['cost']}  score={s['score']}{spend}{probe_hint}")
     print("Run it:  python3 external_critic.py <file> --panel")
     return 0
 
@@ -785,7 +913,7 @@ def _provider_for_endpoint(endpoint):
 # secret store (critic-api-key-<provider>) is found WITHOUT any shell helper.
 # Env / .env CRITIC_API_KEY still wins; this only fills the gap when CRITIC_BASE_URL
 # identifies a known provider. (--panel seats already resolve keys via _key_for.)
-if BASE_URL and not API_KEY:
+if BASE_URL and BASE_URL != "codex-cli" and not API_KEY:
     API_KEY = _provider_key(_provider_for_endpoint(BASE_URL)) or ""
     if not API_KEY and not re.search(r"localhost|127\.0\.0\.1", BASE_URL):
         print("(advisory: no CRITIC_API_KEY set and CRITIC_BASE_URL matches no known "
@@ -800,6 +928,8 @@ def _seat_runtime(seat):
     SHAPE (not 'localhost') is what lets a local /v1 server and a LAN Ollama both work."""
     model = seat.get("model", "")
     endpoint = seat.get("endpoint", "") or HOST
+    if endpoint == "codex-cli":
+        return model, "codex-cli", ""
     prov = _provider_for_endpoint(endpoint)
     openai_compat = bool(prov) or bool(re.search(r"/v\d", endpoint)) or \
         (bool(BASE_URL) and endpoint.rstrip("/") == BASE_URL.rstrip("/"))
@@ -847,7 +977,19 @@ def do_panel(artifact_path, brief, intent, mode, depth, assume_yes):
         try:
             out = call_model(system, prompt, model=model, base_url=base_url, api_key=api_key)
         except Exception as e:  # noqa: BLE001 — one dead seat must not sink the panel
-            print(f"(unavailable: {e})")
+            msg = str(e)
+            if re.search(r"429|quota|allocation|insufficient|401|403", msg, re.I):
+                # A no-tokens/no-access failure is DURABLE evidence: record it so the next
+                # --configure flags the seat 'blocked' and discards it from suggestions
+                # (a seat with no tokens is not a seat; a passing re-probe restores it).
+                # Transient failures (timeout, refused connection) are NOT recorded —
+                # they would block a good seat over a network blip.
+                register(model, seat.get("lineage", "?"), base_url or HOST, "UNAVAILABLE",
+                         seat.get("cost", "?"), "na", msg.splitlines()[0][:120])
+                print(f"(unavailable: {e})  [no tokens/access — recorded; discarded from "
+                      "suggestions until a re-probe passes]")
+            else:
+                print(f"(unavailable: {e})")
             continue
         print(out.strip())
         log_run(label_art, mode, depth, brief, intent,
@@ -858,7 +1000,8 @@ def do_panel(artifact_path, brief, intent, mode, depth, assume_yes):
               "Ollama, or `--configure`.")
         return 1
     print(f"\n=== {ran} seat(s) ran. SYNTHESIZE (don't average): agreement across seats is strong "
-          "corroboration; a lone claim is a CONTESTED point to weigh — you are the reducer. ===")
+          "corroboration; a lone claim is a CONTESTED point to weigh — you are the reducer. "
+          "An ABSTAIN is a COVERAGE GAP, not agreement: note what no seat could judge. ===")
     return 0
 
 
@@ -878,6 +1021,9 @@ def main():
     ap.add_argument("--probe", action="store_true",
                     help="capability probe (availability != capability): SCORE the seat on a "
                          "tiny multi-flaw artifact (PASS = score>=1); records it in the registry")
+    ap.add_argument("--probe-all", action="store_true",
+                    help="probe EVERY installed local Ollama chat model on the floor battery "
+                         "and print a ranked capability table (results land in the registry)")
     ap.add_argument("--discover", action="store_true",
                     help="list the models this key/endpoint can serve (newest-first), with "
                          "cost tier + capability score — don't hard-code a model")
@@ -904,6 +1050,8 @@ def main():
 
     if args.configure:
         sys.exit(do_configure(args.project, args.choose, args.auto))
+    if args.probe_all:
+        sys.exit(do_probe_all(args.cost))
     if args.discover:
         sys.exit(do_discover())
     if args.probe:
@@ -922,7 +1070,7 @@ def main():
             text = f.read()
 
     # Advisory: has this seat been certified capable? (availability != capability)
-    _seat = latest_per_model(_registry_records()).get(MODEL)
+    _seat = latest_per_model(_registry_records()).get((MODEL, ENDPOINT))
     if not _seat or _seat.get("probe") != "PASS":
         print(f"(advisory: '{MODEL}' has no capability-PASS on record — run "
               f"`python3 {os.path.basename(__file__)} --probe` to certify it; a reachable "
