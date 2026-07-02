@@ -32,9 +32,18 @@ Usage:
     # FAIL = a null seat that summarizes, UNAVAILABLE = it didn't answer). The score is a
     # quantitative proxy that ranks the panel. Deterministic, non-LLM grader.
 
+    python3 external_critic.py --init
+    # ZERO-CONFIG bootstrap: detect + score every free/subscription seat this machine
+    # can field (local Ollama sweep + codex/gemini CLIs on PATH), then REMEMBER the
+    # suggested panel. One command; paid API keys stay unprobed and spend-gated.
+
     python3 external_critic.py --probe-all
     # score EVERY installed local Ollama chat model on the floor battery, ranked — one
     # command to see what this laptop can actually run (results land in the registry).
+
+    python3 external_critic.py --retire MODEL
+    # human veto: the floor probe is a FLOOR — a seat that passes it can still be null
+    # on real artifacts. Retire it (beats its PASS); a deliberate --probe reconsiders.
 
     python3 external_critic.py --configure [--auto] [--project] [--choose "m1,m2"]
     # PICK your panel: configured providers -> grouped-by-lineage table -> pick 1-3 (or --auto
@@ -63,11 +72,11 @@ Config (env / .env — a set, non-empty env var always wins):
     .env           setup.sh writes its chosen model here (real env vars win).
     CRITIC_BASE_URL  set → OpenAI-compatible endpoint, base incl. the version path
                    (e.g. .../v1); a hosted, different-lineage model sent off-machine.
-                   Empty = local Ollama (private, default). The literal value
-                   "codex-cli" routes to the OpenAI Codex CLI on PATH instead — a
-                   SUBSCRIPTION seat (ChatGPT plan): no key, no per-call bill.
+                   Empty = local Ollama (private, default). The literal values
+                   "codex-cli" / "gemini-cli" route to that CLI on PATH instead — a
+                   SUBSCRIPTION seat (the CLI's own login): no key, no per-call bill.
                    There CRITIC_MODEL is ignored (it's an Ollama/cloud id); pick a
-                   specific codex model with CRITIC_CODEX_MODEL if you must.
+                   specific CLI model with CRITIC_CODEX_MODEL / CRITIC_GEMINI_MODEL.
     CRITIC_API_KEY   Bearer token for CRITIC_BASE_URL. Resolution: env / .env first;
                    else, when CRITIC_BASE_URL matches a known provider, the key is
                    read from the OS secret store (item critic-api-key-<provider> —
@@ -130,6 +139,18 @@ def _cfg(key, default):
     return os.environ.get(key) or _DOTENV.get(key) or default
 
 
+# Subscription CLI seats: agent CLIs on PATH run on the user's own plan/account —
+# no API key here, no per-call bill (cost tier "sub"; --panel does not spend-gate them).
+# Auth lives in the CLI itself (codex: ChatGPT login; gemini: `gemini` once -> Google
+# login). Each seat's env var overrides its model — CRITIC_MODEL (an Ollama/cloud id)
+# deliberately does NOT apply, so a shell's export can't leak into the CLI's -m flag.
+CLI_SEATS = {
+    "codex-cli":  {"bin": "codex",  "default": "codex-default",  "lineage": "gpt",
+                   "env": "CRITIC_CODEX_MODEL"},
+    "gemini-cli": {"bin": "gemini", "default": "gemini-default", "lineage": "gemini",
+                   "env": "CRITIC_GEMINI_MODEL"},
+}
+
 HOST = _cfg("OLLAMA_HOST", "http://localhost:11434")
 MODEL = _cfg("CRITIC_MODEL", "qwen3:8b")
 LOG_PATH = _cfg("CRITIC_LOG", os.path.join(_HERE, "critique.log"))
@@ -145,11 +166,11 @@ OPENAI_OPTIONS = {"temperature": OPTIONS["temperature"]}
 # (private; nothing leaves the box). CRITIC_API_KEY is sent as a Bearer token.
 BASE_URL = _cfg("CRITIC_BASE_URL", "")
 API_KEY = _cfg("CRITIC_API_KEY", "")
-if BASE_URL == "codex-cli":
+if BASE_URL in CLI_SEATS:
     # CRITIC_MODEL is an Ollama/cloud id — a shell's exported model must not leak into
-    # `codex -m` (and a 400 there would mis-register against that model). The CLI seat
-    # has its own explicit override: CRITIC_CODEX_MODEL.
-    MODEL = os.environ.get("CRITIC_CODEX_MODEL") or "codex-default"
+    # a CLI's -m flag (and a 400 there would mis-register against that model). Each
+    # CLI seat has its own explicit override env var instead.
+    MODEL = os.environ.get(CLI_SEATS[BASE_URL]["env"]) or CLI_SEATS[BASE_URL]["default"]
 ENDPOINT = BASE_URL or HOST   # what actually served the critique (display + log)
 
 SYSTEM = (
@@ -188,34 +209,40 @@ def build_prompt(artifact, brief, intent, mode):
     return "\n".join(parts)
 
 
-# Subscription CLI seat: the OpenAI Codex CLI (detected on PATH) runs on the user's
-# ChatGPT plan — no API key, no per-call bill; quota comes from the plan itself.
-# "codex-default" = let the CLI use its configured default model (no -m flag).
-CODEX_MODELS = ["codex-default"]
-
-
-def _call_codex(model, system, prompt):
-    """Route one critique through `codex exec`: read-only sandbox, prompt on stdin,
-    final message read from -o FILE (plain stdout carries progress noise)."""
-    fd, out_path = tempfile.mkstemp(suffix=".txt")
-    os.close(fd)
-    cmd = ["codex", "exec", "--skip-git-repo-check", "--sandbox", "read-only",
-           "--color", "never", "-o", out_path, "-"]
-    if model and model != "codex-default":
-        cmd[2:2] = ["-m", model]
-    try:
-        r = subprocess.run(cmd, input=f"{system}\n\n{prompt}", capture_output=True,
-                           text=True, timeout=600)
-        if r.returncode != 0:
-            tail = (r.stderr or r.stdout).strip().splitlines() or ["no output"]
-            raise RuntimeError(f"codex exec failed ({r.returncode}): {tail[-1][:200]}")
-        with open(out_path, encoding="utf-8") as f:
-            return f.read().strip()
-    finally:
+def _call_cli(seat, model, system, prompt):
+    """Route one critique through a subscription CLI (prompt on stdin — argv has size
+    limits a diff can exceed). codex: read-only sandbox, final message read from -o FILE
+    (plain stdout carries progress noise). gemini: stdout IS the answer."""
+    text = f"{system}\n\n{prompt}"
+    explicit = model and model != CLI_SEATS[seat]["default"]
+    if seat == "codex-cli":
+        fd, out_path = tempfile.mkstemp(suffix=".txt")
+        os.close(fd)
+        cmd = ["codex", "exec", "--skip-git-repo-check", "--sandbox", "read-only",
+               "--color", "never", "-o", out_path, "-"]
+        if explicit:
+            cmd[2:2] = ["-m", model]
         try:
-            os.unlink(out_path)
-        except OSError:
-            pass
+            r = subprocess.run(cmd, input=text, capture_output=True, text=True, timeout=600)
+            if r.returncode != 0:
+                tail = (r.stderr or r.stdout).strip().splitlines() or ["no output"]
+                raise RuntimeError(f"codex exec failed ({r.returncode}): {tail[-1][:200]}")
+            with open(out_path, encoding="utf-8") as f:
+                return f.read().strip()
+        finally:
+            try:
+                os.unlink(out_path)
+            except OSError:
+                pass
+    # -p forces headless mode on every CLI version (bare stdin is version-dependent and
+    # can drop into interactive mode = a silent hang). The short system contract rides
+    # -p; the artifact payload stays on stdin (argv has size limits a diff can exceed).
+    cmd = ["gemini", "-p", system] + (["-m", model] if explicit else [])
+    r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=600)
+    if r.returncode != 0 or not r.stdout.strip():
+        tail = (r.stderr or r.stdout).strip().splitlines() or ["no output"]
+        raise RuntimeError(f"gemini failed ({r.returncode}): {tail[-1][:200]}")
+    return r.stdout.strip()
 
 
 def call_model(system, prompt, model=None, base_url=None, api_key=None):
@@ -223,8 +250,8 @@ def call_model(system, prompt, model=None, base_url=None, api_key=None):
     model = model or MODEL
     base_url = BASE_URL if base_url is None else base_url
     api_key = API_KEY if api_key is None else api_key
-    if base_url == "codex-cli":   # subscription CLI seat — no HTTP, no key
-        return _call_codex(model, system, prompt)
+    if base_url in CLI_SEATS:   # subscription CLI seat — no HTTP, no key
+        return _call_cli(base_url, model, system, prompt)
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": prompt},
@@ -371,7 +398,7 @@ def infer_lineage(model, base_url):
 def infer_cost(base_url, api_key, override):
     if override:
         return override
-    if base_url == "codex-cli":
+    if base_url in CLI_SEATS:
         return "sub"                            # subscription plan — no per-call bill
     if not base_url:
         return "free"                          # local Ollama, on this box
@@ -573,13 +600,73 @@ def do_probe_all(cost_override):
     return 0 if any(r[2] >= 1 for r in results) else 1
 
 
+def do_retire(model):
+    """The human veto: a floor-probe PASS is a FLOOR, not usefulness — a seat can name
+    planted flaws yet stay null on real artifacts (observed: gpt-oss, deepseek-r1).
+    When practice contradicts the probe, retire the seat: newest-wins beats its PASS and
+    it drops from tables and suggestions. A deliberate later --probe reconsiders it.
+    Uselessness is a judgment about the MODEL, so it is retired at EVERY endpoint the
+    registry has seen it on (records are keyed (model, endpoint)); a never-probed cloud
+    seat falls back to the current CRITIC_BASE_URL context."""
+    recs = _registry_records()
+    endpoints = sorted({r.get("endpoint", "") for r in recs if r.get("model") == model} - {""})
+    if not endpoints:
+        endpoints = [ENDPOINT]
+        print(f"(no registry record for {model} — retiring at the current endpoint; "
+              f"set CRITIC_BASE_URL first for a cloud/CLI seat)")
+    for ep in endpoints:
+        register(model, infer_lineage(model, ep), ep, "RETIRED",
+                 infer_cost("" if ep == HOST else ep, API_KEY, ""), "na",
+                 "retired by user: useless in practice despite its probe result")
+        print(f"retired: {model} @ {ep} — excluded from tables and suggestions "
+              f"(a deliberate --probe reconsiders it).")
+    pn = read_panel()
+    if pn and any(s.get("model") == model for s in pn.get("selected", [])):
+        print("note: it is in your remembered panel — --panel now skips it; run --configure to replace it.")
+    return 0
+
+
+def do_init(project):
+    """ZERO-CONFIG bootstrap for a fresh install: detect what THIS machine can field,
+    score every FREE/SUB seat (local Ollama sweep + subscription CLIs on PATH), and
+    remember the suggested panel — one command, no choices to make. Paid API keys are
+    listed by --configure but never auto-probed (spending needs consent)."""
+    total = len(PROBE_FLAWS)
+    try:
+        urllib.request.urlopen(f"{HOST}/api/tags", timeout=5)
+        do_probe_all("")
+    except SystemExit:
+        pass                                   # probe-all already printed why
+    except Exception:  # noqa: BLE001
+        print(f"(no local Ollama at {HOST} — skipping local seats)")
+    for seat, cfg in CLI_SEATS.items():
+        if not shutil.which(cfg["bin"]):
+            continue
+        mid = cfg["default"]
+        print(f"probing {mid} via {seat} …", end="", flush=True)
+        try:
+            out = call_model(SYSTEM, build_prompt(PROBE_ARTIFACT, PROBE_BRIEF, "", "correctness"),
+                             model=mid, base_url=seat, api_key="")
+            score, named = score_probe(out)
+            result = "PASS" if score >= 1 else "FAIL"
+            register(mid, cfg["lineage"], seat, result, "sub", score,
+                     f"floor probe: named {score}/{total}: {', '.join(named) or 'none'}")
+            print(f" {result} {score}/{total}")
+        except Exception as e:  # noqa: BLE001
+            register(mid, cfg["lineage"], seat, "UNAVAILABLE", "sub", "na",
+                     str(e).splitlines()[0][:120])
+            print(f" UNAVAILABLE — {str(e).splitlines()[0][:100]}")
+    print()
+    return do_configure(project, "", True)
+
+
 def _suggest_panel(rows, top=3):
     """Auto-rank candidate rows -> the best seat per DISTINCT lineage (independence =
     diversity), by score then no-marginal-cost-first (free/sub before paid), capped at
     `top`. A 'blocked' seat (latest record UNAVAILABLE — quota exhausted or unreachable)
     is DISCARDED: a seat with no tokens is not a seat (re-probe restores it).
     rows are [lineage, model, endpoint, cost, score]."""
-    rows = [r for r in rows if r[4] != "blocked"]
+    rows = [r for r in rows if r[4] not in ("blocked", "retired", "failed")]
     def key(r):
         return (_int(r[4]), r[3] != "paid")
     best = {}
@@ -633,9 +720,9 @@ def _version(model_id):
 
 def discover_models():
     """Model ids the configured key/endpoint can serve. OpenAI-compat: GET /models;
-    local Ollama: GET /api/tags; codex-cli: the CLI's static seat."""
-    if BASE_URL == "codex-cli":
-        return list(CODEX_MODELS)
+    local Ollama: GET /api/tags; a CLI seat: its single default seat."""
+    if BASE_URL in CLI_SEATS:
+        return [CLI_SEATS[BASE_URL]["default"]]
     if BASE_URL:
         url = f"{BASE_URL.rstrip('/')}/models"
         headers = {"Authorization": f"Bearer {API_KEY}"} if API_KEY else {}
@@ -771,9 +858,16 @@ def _candidate_rows():
     `--choose` can name any servable model, not just a displayed one. Never probes (no paid
     call). Lineage is lower-cased so registry and discovery rows group as one lineage."""
     scored = latest_per_model(_registry_records())
+    try:    # an uninstalled local model is not a seat — check what Ollama actually has
+        _tags = json.loads(urllib.request.urlopen(f"{HOST}/api/tags", timeout=5).read())
+        local_now = {m.get("name", "") for m in _tags.get("models", [])}
+    except Exception:  # noqa: BLE001 — Ollama down: can't verify, keep the rows
+        local_now = None
     seen, table, listed, catalog = set(), [], set(), {}
     for r in scored.values():
         seen.add(r["model"])
+        if r.get("endpoint") == HOST and local_now is not None and r["model"] not in local_now:
+            continue                       # registry says PASS, but the model is gone from disk
         if r.get("probe") == "PASS" and r.get("lineage") not in ("claude", "anthropic"):
             row = [(r.get("lineage") or "?").lower(), r["model"], r.get("endpoint", ""),
                    r.get("cost", "?"), str(r.get("score", "?"))]
@@ -804,24 +898,29 @@ def _candidate_rows():
             # the seat's lineage comes from the model id, not the provider label.
             lin = infer_lineage(name, "") if lineage == "(varies)" else lineage
             rec = scored.get((name, base))
-            # Latest record UNAVAILABLE (quota exhausted, dead id) -> 'blocked': shown,
-            # but the suggestion discards it — a seat with no tokens is not a seat.
-            mark = "blocked" if rec and rec.get("probe") == "UNAVAILABLE" else "unprobed"
+            # Latest record UNAVAILABLE (quota exhausted, dead id) -> 'blocked'; RETIRED
+            # (the human veto) -> 'retired'; FAIL (a certified-null seat) -> 'failed'.
+            # All three are shown in the table but discarded from suggestions.
+            mark = {"UNAVAILABLE": "blocked", "RETIRED": "retired", "FAIL": "failed"}.get(
+                (rec or {}).get("probe"), "unprobed")
             row = [lin.lower(), name, base, "paid", mark]             # paid stays UNPROBED (consent-gated)
             catalog.setdefault(name, row)             # full catalog: --choose can name any servable model
             if name not in listed and n < 4:          # top-4 per provider in the BROWSE table
                 table.append(row); listed.add(name)
-    if shutil.which("codex"):                          # subscription CLI seat — plan-covered, no key
-        for mid in CODEX_MODELS:
-            seen.add(mid)
-            rec = scored.get((mid, "codex-cli"))
-            if rec and rec.get("probe") == "PASS":
-                continue                               # already in the table via the registry loop
-            mark = "blocked" if rec and rec.get("probe") == "UNAVAILABLE" else "unprobed"
-            row = ["gpt", mid, "codex-cli", "sub", mark]
-            catalog.setdefault(mid, row)
-            if mid not in listed:
-                table.append(row); listed.add(mid)
+    for seat, cfg in CLI_SEATS.items():                # subscription CLI seats — plan-covered, no key
+        if not shutil.which(cfg["bin"]):
+            continue
+        mid = cfg["default"]
+        seen.add(mid)
+        rec = scored.get((mid, seat))
+        if rec and rec.get("probe") == "PASS":
+            continue                                   # already in the table via the registry loop
+        mark = {"UNAVAILABLE": "blocked", "RETIRED": "retired", "FAIL": "failed"}.get(
+            (rec or {}).get("probe"), "unprobed")
+        row = [cfg["lineage"], mid, seat, "sub", mark]
+        catalog.setdefault(mid, row)
+        if mid not in listed:
+            table.append(row); listed.add(mid)
     return table, seen, catalog
 
 
@@ -832,8 +931,8 @@ def do_configure(project, explicit, auto):
     prior = read_panel()
     rows, seen, catalog = _candidate_rows()
     if not rows:
-        print("nothing to choose yet — `--probe` a local seat or store a cloud key "
-              "(`critic_setup.py --install`), then re-run `--configure`.")
+        print("nothing to choose yet — run `--init` (zero-config: detects and scores every "
+              "free/subscription seat), or store a cloud key (`critic_setup.py --install`).")
         print("(meanwhile, fall back to same-lineage in-context critics — the Standard "
               "preset's personas — and FLAG 'independence degraded'.)")
         return 1
@@ -913,7 +1012,7 @@ def _provider_for_endpoint(endpoint):
 # secret store (critic-api-key-<provider>) is found WITHOUT any shell helper.
 # Env / .env CRITIC_API_KEY still wins; this only fills the gap when CRITIC_BASE_URL
 # identifies a known provider. (--panel seats already resolve keys via _key_for.)
-if BASE_URL and BASE_URL != "codex-cli" and not API_KEY:
+if BASE_URL and BASE_URL not in CLI_SEATS and not API_KEY:
     API_KEY = _provider_key(_provider_for_endpoint(BASE_URL)) or ""
     if not API_KEY and not re.search(r"localhost|127\.0\.0\.1", BASE_URL):
         print("(advisory: no CRITIC_API_KEY set and CRITIC_BASE_URL matches no known "
@@ -928,8 +1027,8 @@ def _seat_runtime(seat):
     SHAPE (not 'localhost') is what lets a local /v1 server and a LAN Ollama both work."""
     model = seat.get("model", "")
     endpoint = seat.get("endpoint", "") or HOST
-    if endpoint == "codex-cli":
-        return model, "codex-cli", ""
+    if endpoint in CLI_SEATS:
+        return model, endpoint, ""
     prov = _provider_for_endpoint(endpoint)
     openai_compat = bool(prov) or bool(re.search(r"/v\d", endpoint)) or \
         (bool(BASE_URL) and endpoint.rstrip("/") == BASE_URL.rstrip("/"))
@@ -945,8 +1044,9 @@ def do_panel(artifact_path, brief, intent, mode, depth, assume_yes):
     are spend-gated: confirmed, --yes, or skipped (never an auto-spend)."""
     panel = read_panel()
     if not panel or not panel.get("selected"):
-        print("no remembered panel — run `--configure` to pick one (`--auto` for the suggested "
-              "default). `--panel` runs only a panel you chose.")
+        print("no remembered panel yet — run `--init` once (zero-config: detects and scores every "
+              "free/subscription seat, then remembers the suggested panel), or `--configure` to "
+              "pick your own. `--panel` runs only a panel you chose.")
         return 1
     try:
         art = sys.stdin.read() if artifact_path == "-" else open(artifact_path, encoding="utf-8").read()
@@ -957,9 +1057,14 @@ def do_panel(artifact_path, brief, intent, mode, depth, assume_yes):
     label_art = "<stdin>" if artifact_path == "-" else artifact_path
     print(f"PANEL — {len(panel['selected'])} remembered seat(s) on {os.path.basename(label_art)}:")
     ran = 0
+    vetoed = latest_per_model(_registry_records())
     for seat in panel["selected"]:
         model, base_url, api_key = _seat_runtime(seat)
         label = f"{model} [{seat.get('lineage', '?')}]"
+        rec = vetoed.get((model, base_url or HOST)) or vetoed.get((model, seat.get("endpoint", "")))
+        if rec and rec.get("probe") == "RETIRED":
+            print(f"\n--- SKIP {label}: RETIRED (the human veto) — run --configure to replace it ---")
+            continue
         if seat.get("cost") == "paid":
             if not api_key:
                 prov = _provider_for_endpoint(seat.get("endpoint", "")) or "<provider>"
@@ -1021,6 +1126,12 @@ def main():
     ap.add_argument("--probe", action="store_true",
                     help="capability probe (availability != capability): SCORE the seat on a "
                          "tiny multi-flaw artifact (PASS = score>=1); records it in the registry")
+    ap.add_argument("--init", action="store_true",
+                    help="ZERO-CONFIG bootstrap: detect + score every free/subscription seat "
+                         "this machine can field, then remember the suggested panel")
+    ap.add_argument("--retire", default="", metavar="MODEL",
+                    help="human veto: mark MODEL useless in practice (beats its probe PASS); "
+                         "excluded from tables/suggestions until a deliberate re-probe")
     ap.add_argument("--probe-all", action="store_true",
                     help="probe EVERY installed local Ollama chat model on the floor battery "
                          "and print a ranked capability table (results land in the registry)")
@@ -1048,6 +1159,10 @@ def main():
                     help="with --panel: run PAID seats without the per-seat spend confirm")
     args = ap.parse_args()
 
+    if args.init:
+        sys.exit(do_init(args.project))
+    if args.retire:
+        sys.exit(do_retire(args.retire))
     if args.configure:
         sys.exit(do_configure(args.project, args.choose, args.auto))
     if args.probe_all:
@@ -1061,7 +1176,7 @@ def main():
             ap.error("--panel needs an artifact path (or '-' for stdin)")
         sys.exit(do_panel(args.artifact, args.brief, args.intent, args.mode, args.depth, args.yes))
     if not args.artifact:
-        ap.error("artifact is required (or pass --configure / --discover / --probe / --panel)")
+        ap.error("artifact is required (or pass --init / --configure / --discover / --probe / --panel)")
 
     if args.artifact == "-":
         text = sys.stdin.read()

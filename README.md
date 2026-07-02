@@ -37,21 +37,19 @@ The protocol itself is a *procedure* — nothing to install; paste the presets f
 git clone https://github.com/matteolopreti/spatiotemporal-critique
 cd spatiotemporal-critique
 
-# 1 · a local reviewer — free, private (needs https://ollama.com installed):
-./setup.sh                                # picks a model that fits your RAM; asks before pulling
+# 1 · zero-config: detect + score everything this machine can field, remember a panel.
+#     (local Ollama models, and the codex / gemini CLIs if you have them — free/sub only)
+python3 external_critic.py --init
 
-# 2 · certify the seat actually critiques (availability ≠ capability):
-python3 external_critic.py --probe        # scored 0..2 on planted flaws; PASS = ≥1
-
-# 3 · pick and remember your panel (1–3 seats across model families):
-python3 external_critic.py --configure    # Enter accepts the suggested free-first panel
-
-# 4 · review real work:
+# 2 · review real work:
 python3 external_critic.py draft.md --panel
 ```
 
-- **Windows, or no bash:** `python3 critic_setup.py` prints the same setup tailored to your OS and shell (macOS / Linux / Windows; zsh / bash / fish / PowerShell).
-- **Cloud seats** (Gemini, GLM, Cloudflare Workers AI, Perplexity, …): store one key per provider — see [API keys](#api-keys). Paid seats always ask before spending.
+That's the whole onboarding. Optional extras:
+
+- **No local model yet?** `./setup.sh` picks one that fits your RAM (asks before pulling); `python3 critic_setup.py` prints the same tailored to any OS/shell (macOS / Linux / Windows; zsh / bash / fish / PowerShell).
+- **Cloud seats** (Gemini, GLM, Cloudflare Workers AI, Perplexity, …): store one key per provider — see [API keys](#api-keys). Paid seats always ask before spending; `--init` never probes them.
+- **Manual control:** `--probe` (certify one seat) · `--probe-all` (rank all local models) · `--configure` (pick your own panel) · `--retire` (veto a seat that passes the probe but is useless in practice).
 - No dependencies, ever: `external_critic.py` is Python stdlib only.
 
 ---
@@ -187,7 +185,8 @@ One model in one session only *approximates* independence (same weights, correla
 
 | Command | What it does |
 | --- | --- |
-| `--probe` | **Certify the seat.** Availability ≠ capability: a reachable model can still be a *null* seat that summarizes instead of critiquing. The probe plants known flaws and scores how many the seat *names* (deterministic grader, no LLM). Results accumulate in a per-machine registry. `--probe-all` scores **every installed local model in one command**, ranked. |
+| `--init` | **Zero-config bootstrap.** Detects local Ollama models and subscription CLIs (codex, gemini), scores every free/sub seat, and remembers the suggested panel — one command, no choices. Paid APIs are never auto-probed. |
+| `--probe` | **Certify the seat.** Availability ≠ capability: a reachable model can still be a *null* seat that summarizes instead of critiquing. The probe plants known flaws and scores how many the seat *names* (deterministic grader, no LLM). Results accumulate in a per-machine registry. `--probe-all` scores **every installed local model in one command**, ranked. `--retire MODEL` is the human veto for a seat that passes the probe but proves useless in practice. |
 | `--discover` | **List what a key can serve**, newest-first, with cost tier + probe score — so you never hard-code a model that rots. |
 | `--configure` | **Pick + remember a panel** of 1–3 capable seats across *distinct* model families (independence = diversity). Enter/`--auto` accepts a score-ranked, free-first suggestion; the choice persists in `critic_panel.json` and new models get flagged on re-runs. |
 | `<file> --panel` | **Run the remembered panel.** Every seat critiques the file; each view prints as a *contested* input for your synthesis. Paid seats ask before spending (`--yes` to allow); one dead seat never sinks the panel; every run is pin-logged (model + params) for reproducibility. |
@@ -209,7 +208,7 @@ Supported providers (each a different lineage from Claude): `openai` · `google`
 
 - **Cloudflare Workers AI** is the budget pick: one key serves **many lineages** (GLM, Kimi, DeepSeek, Qwen, Gemma) with a **free daily allocation**. It also needs your account id (not a secret): `export CLOUDFLARE_ACCOUNT_ID=<id>` — it's in your dashboard URL. Create the token at dash.cloudflare.com → Workers AI → REST API.
 - **Windows / Linux:** macOS uses the Keychain; Linux uses libsecret (`secret-tool`); Windows uses per-provider user env vars (Python's stdlib can't read Credential Manager, and the helper stays dependency-free).
-- **Subscription CLIs need no key at all:** if the OpenAI **Codex CLI** is on your PATH, it is auto-detected as a `sub` seat (GPT lineage) — it runs on your ChatGPT plan with no per-call bill, so it is *not* spend-gated. Paid **APIs** still ask before every call.
+- **Subscription CLIs need no key at all:** the OpenAI **Codex CLI** (GPT lineage, ChatGPT plan) and the **Gemini CLI** (Gemini lineage, Google login — authenticate once by running `gemini`) are auto-detected as `sub` seats with no per-call bill, so they are *not* spend-gated. Paid **APIs** still ask before every call.
 - **A seat with no tokens is not a seat:** when a seat fails on quota (Cloudflare's daily allocation, an unfunded API), the failure is recorded and `--configure` discards it from suggestions (shown as `blocked`) until a re-probe passes.
 - An explicit `CRITIC_API_KEY` in the environment always wins; paid seats are **always spend-gated** — `--panel` asks before each paid call.
 
@@ -238,3 +237,4 @@ Supported providers (each a different lineage from Claude): `openai` · `google`
 - **v4.7** — **`--panel` runs the remembered panel** (spend-gated, endpoint-shape routing, per-seat pin-log); `--select` folded into `--configure`; de-coupled from any host harness.
 - **v4.8** — **keys resolve from the OS secret store directly** (bugfix: the docs promised it, but only the optional `critic-env` shell helper delivered it — now `--panel`, `--configure`, *and* plain runs find `critic-api-key-<provider>` on their own; Windows uses per-provider env vars). New providers: **Cloudflare Workers AI** (one key, many lineages, free daily allocation; `CLOUDFLARE_ACCOUNT_ID` fills the per-account URL) and **Perplexity** — both lack `GET /models`, so discovery falls back to a hand-refreshed `STATIC_MODELS` list; multi-lineage providers now infer each seat's lineage from the model id. Lineage table gained gemma/kimi/sonar. **Retired** `gpt-oss:20b` and `deepseek-r1:14b` (reachable but null on real artifacts); `gemma4:12b` promoted (probed 2/2). README reworked: install, API keys, panel life-cycle, concise changelog.
 - **v4.9** — closes the two items deferred since v4.0, and widens the capability system. **Abstention channel**: any critic may answer "ABSTAIN: what — why" instead of fabricating; synthesis treats it as a coverage gap, never agreement. **Confidence-term audit**: the three-level vocabulary (corroborated / contested / hypothesis) is now defined once and used consistently — no self-reported percentages. **Probe battery v2**: three planted flaws (contradiction · impossible number · circular order), score 0–3; scores are comparable per battery version. **`--probe-all`**: score every installed local Ollama model in one command, ranked. **Subscription seats**: the OpenAI Codex CLI is auto-detected (`codex-cli` transport, cost tier `sub`, GPT lineage) — plan-covered, keyless, not spend-gated; paid APIs still ask. **Quota-discard**: a seat that fails on quota is recorded and drops out of panel suggestions (`blocked`) until a re-probe passes — a seat with no tokens is not a seat.
+- **v4.10** — **onboarding + honesty about the probe's limits.** New **`--init`**: zero-config bootstrap — detect local Ollama models and subscription CLIs, score every free/sub seat, remember the suggested panel; one command, no choices, nothing paid touched (this is the fresh-install path, and the skill runs it autonomously when no panel exists). New **`--retire MODEL`** — the human veto: the floor probe is a floor and can false-pass (observed: seats that named every planted flaw yet stayed null on real artifacts); a RETIRED record beats the PASS until a deliberate re-probe. **Liveness check**: registry rows for local models no longer installed drop out automatically. **Gemini CLI** joins Codex as a second auto-detected subscription seat (`gemini-cli`, Gemini lineage, Google login; `CRITIC_GEMINI_MODEL` overrides). CLI seats generalized into one table (`CLI_SEATS`).
