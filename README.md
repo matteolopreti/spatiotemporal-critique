@@ -84,34 +84,35 @@ That's the whole onboarding. Optional extras:
 
 ---
 
-## At a glance
+## At a glance — the mechanism
 
 ```
-  ALWAYS ON — the four mandates   (balance is the panel's job, not any one critic's)
-      synthesis layer:  preserve-first · steelman
-      reviser layer:    discerning-solver · improvement-gate
-
-  task ─▶ trivial & reversible? ─▶ just do it   (the framework declines itself)
-       ▼ else
-  CONFIGURE ─▶ intent · verifier · ontology · supervision · external?
-       ▼
-  ── AWAKE · converge ───────────────────────────────
-     ① Origin    → get the target right · externalize · severe tests ·
-                   surface intent-doubt for the user to adjudicate
-     ② Spatial   → independent critics ▶ fresh-context synthesis ▶ preserve-list
-     ③ Temporal  → backward (what broke) · forward (what might fail) ·
-                   re-anchor on the best-corroborated intent
-        ↻ repeat until a pass finds nothing material
-       ▼ at the peak
-  ── ASLEEP · diverge ───────────────────────────────
-     ④ Consolidate → prune to the core · extract the rule (gist)
-     ⑤ Perturb     → near + far: find brittleness, recover options
-        ↻ wake ⇄ sleep until stable under both
-
-  ─▶ BETTER WORK      ·      scale threads through · blast-radius ≈ time-scale
+ your draft (code · doc · design · plan)
+     │
+     ▼
+ 1 · CLAUDE RUNS THE PROTOCOL                                   (always)
+     preserve what works → steelman your choices → confirm the goal
+     → only then critique — and it may conclude "ship it as is"
+     │
+     ▼
+ 2 · THE PANEL                                    (optional — real stakes)
+     the same draft goes BLIND and IN PARALLEL to 2–3 models from
+     DIFFERENT vendors — a local Ollama model, the Codex CLI on your
+     subscription, or Gemini / GLM / DeepSeek in the cloud.
+     Every seat is probe-certified before it's trusted;
+     paid seats always ask before spending.
+     │
+     ▼
+ 3 · THE SYNTHESIS                                    (you are the judge)
+     union of findings, DISAGREEMENT FIRST — divergence marks where to look
+     cross-vendor agreement = corroboration, never proof
+     a lone claim = contested · an abstention = honest coverage gap
+     no combined score, no green light — the verdict stays yours
 ```
 
-*Every step above is specified in full in **[PROTOCOL.md](PROTOCOL.md)*** — the four mandates, Configure-to-the-task (with the floor gate), the Awake stages (**Origin · Spatial · Temporal**), the Sleep stages (**Consolidate · Perturb**), the loop structure, and Scale. The optional [external critic](#external-critic--probe-pick-run) below is the strongest rung of Spatial's independence ladder.
+**Why this works:** every seat reads your work cold (independent, no anchoring on each other); no seat can *bless* the work, only raise problems; and the seats come from **different vendors**, so they don't share blind spots the way one model reviewing its own output does. [Measured](TRIAL.md): this cut invented problems 2.6× versus a lone critic while finding more of the real ones.
+
+*The full specification — the four mandates, the dials, the awake/asleep loop — is in **[PROTOCOL.md](PROTOCOL.md)**; the [external critic](#external-critic--probe-pick-run) commands are below.*
 
 ---
 

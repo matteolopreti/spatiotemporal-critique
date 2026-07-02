@@ -4,6 +4,33 @@ This is the canonical framework spec. The [README](README.md) is the landing pag
 
 ---
 
+## The loop, schematically
+
+```
+  ALWAYS ON — the four mandates   (balance is the panel's job, not any one critic's)
+      synthesis layer:  preserve-first · steelman
+      reviser layer:    discerning-solver · improvement-gate
+
+  task ─▶ trivial & reversible? ─▶ just do it   (the framework declines itself)
+       ▼ else
+  CONFIGURE ─▶ intent · verifier · ontology · supervision · external?
+       ▼
+  ── AWAKE · converge ───────────────────────────────
+     ① Origin    → get the target right · externalize · severe tests ·
+                   surface intent-doubt for the user to adjudicate
+     ② Spatial   → independent critics ▶ fresh-context synthesis ▶ preserve-list
+     ③ Temporal  → backward (what broke) · forward (what might fail) ·
+                   re-anchor on the best-corroborated intent
+        ↻ repeat until a pass finds nothing material
+       ▼ at the peak
+  ── ASLEEP · diverge ───────────────────────────────
+     ④ Consolidate → prune to the core · extract the rule (gist)
+     ⑤ Perturb     → near + far: find brittleness, recover options
+        ↻ wake ⇄ sleep until stable under both
+
+  ─▶ BETTER WORK      ·      scale threads through · blast-radius ≈ time-scale
+```
+
 ## How it works (plain walkthrough)
 
 Read top to bottom. The four mandates sit above everything, always on. The first decision is whether to engage at all — trivial, easily-reversible work gets no framework. For everything else you read the task's shape on the dials, which set how much of each stage runs. Then the **awake** loop: fix the *target* first, look from several independent angles (optionally including a genuinely external model), then check the *trajectory* — which edit broke what, what might fail later, whether you've drifted — and repeat until a pass yields nothing material. At that peak you switch to **asleep**: prune to the core and extract the lesson, then perturb — nearby variants first, then aggressive cross-domain shake-up — to test for brittleness and recover anything cut too early. The whole wake⇄sleep cycle repeats until the work is stable under *both*. Two things run through all of it: **scale** (small decisions get cheap, frequent, local attention; direction gets rare, deep review — because how far a decision reaches is the same as how long it governs) and **intent** (the target is continuously re-checked, so you never perfect your aim at the wrong mark).
