@@ -1,0 +1,57 @@
+1. **Preserve-List**
+
+- Clear module purpose: fetch remote profiles, merge local edits, push merged result.
+- `parse_remote_profiles` degrades malformed JSON to `[]` instead of crashing.
+- Merge starts from remote state and only overlays local edits inside a grace policy.
+- Existing remote profiles are copied with `dict(p)`, avoiding direct mutation of remote profile dicts in the common path.
+- `sync` returns the merged list, which makes behavior testable.
+
+2. **Steelman Current Choices**
+
+- Global cache: reasonable if remote directory fetch is expensive and profiles do not need strict freshness. It does not survive correctness review because `sync` pushes based on cached remote data, so stale cache can overwrite newer remote state.
+- Local edits win within 48 hours: plausible conflict policy for offline-first profiles. Survives as a product rule, but implementation needs stricter timestamp handling.
+- `print` warning in parser: acceptable for a small script or CLI utility. In a service/library, logging would be better, but this is not a correctness blocker without more context.
+- Returning `[]` on parse failure: defensible if “bad directory response means no remote profiles.” Risky if `sync` then pushes `[]` plus local edits and deletes remote profiles. This critique survives because push semantics appear full-replacement.
+- Simple dict merge: fine for flat profile records. Does not survive if nested profile fields or identity fields require protection.
+
+3. **Actual Goal**
+
+Falsifiable claim: `sync(client, local_edits)` should produce and push a profile list that reflects current remote directory data plus valid local edits, with recent local edits overriding conflicting remote fields only during the configured grace window.
+
+Wrong-but-plausible alternative: this is only a best-effort local cache refresher where occasional stale pushes are acceptable. If that were true, the cache and broad parse fallback are less serious. But the docstring says “writes the result back” and “keep local user profiles in step,” so correctness should assume remote state must not be silently regressed.
+
+4. **Assumptions**
+
+- `client.push_profiles(merged)` replaces or materially updates the remote directory. If wrong and it only patches changed local profiles, stale-cache risk is lower.
+- Profile `id` is the stable identity key. If wrong, `merge_profiles` can corrupt identity matching.
+- `edited_at` is trusted input from a local journal. If wrong or externally supplied, future timestamps can force local wins indefinitely.
+- Profiles are flat dicts. If wrong, `.update()` can overwrite entire nested structures incorrectly.
+- ISO timestamps may include offsets. If wrong and they are always naive UTC strings, the timezone bug is narrower but still fragile.
+- Invalid local edit records should not crash sync. If wrong, current unhandled `KeyError`/`ValueError` may be acceptable fail-fast behavior.
+
+5. **Three Angles, Merged**
+
+Domain expert: The cache TTL check is inverted, so cached remote profiles effectively never expire. Combined with full push, this can overwrite newer remote changes indefinitely. Timestamp handling also violates the stated UTC contract.
+
+Skeptical generalist: The code accepts malformed remote shapes too casually, then may push a derived empty or partial profile list. It also trusts local edit structure without validation.
+
+End user: Recent local changes mostly seem protected, but users could lose remote-side profile updates made by another device/admin because sync may push stale cached data.
+
+Contested: Whether parse failure should return `[]` or raise depends on product semantics. For a full write-back sync, raising is safer. For a tolerant read UI, returning `[]` may be acceptable.
+
+6. **Highest-Leverage Issues**
+
+- **[high] Cache expiration condition is wrong, causing stale remote data to persist indefinitely** — change `_cache_get` to `if time.time() - stored_at < CACHE_TTL_SECONDS:` and expire otherwise.
+- **[high] Full sync can push stale cached remote profiles back to the directory** — do not use cached remote data for write-back sync, or push with remote version/ETag preconditions and retry on conflict.
+- **[high] Timestamp comparison mishandles UTC offsets and future timestamps** — parse as timezone-aware, compare against `datetime.now(timezone.utc)`, normalize to UTC, and reject future edits or clamp them as not within grace.
+- **[med] Parse fallback can turn bad remote responses into destructive pushes** — make `parse_remote_profiles` validate that the payload is an object with a list of dict profiles; for sync, fail closed instead of returning `[]` on malformed directory responses.
+- **[med] Local edit profiles can overwrite or omit identity fields** — force `profile["id"] = user_id` for new local profiles and prevent local edits from changing an existing remote profile’s `id`.
+- **[low] Invalid local edit records crash mid-sync** — validate `edit["profile"]` and `edit["edited_at"]` before merging, either skipping bad edits with a warning or raising a clear sync error.
+
+7. **Backward Check**
+
+Skipped: no edit history is provided; I will not invent one.
+
+8. **Verdict**
+
+Not correct enough to leave as is. The smallest change that captures most of the correctness gain is: fix the cache TTL comparison, bypass cache for any sync that writes back, and make grace-window timestamp comparison timezone-aware with future timestamp rejection. Those three changes address the main data-loss risks.

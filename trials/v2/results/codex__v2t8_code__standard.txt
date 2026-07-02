@@ -1,0 +1,60 @@
+**1. Preserve List**
+
+- Per-key isolation works: one key’s usage does not affect another.
+- `allow()` is atomic under a lock, so concurrent calls cannot overshoot the limit inside one process.
+- `remaining()` has no write side effects for unseen or expired keys.
+- `reset()` supports both per-key and global clearing.
+- Explicit `now` injection makes deterministic tests and demos possible.
+- The docstring honestly scopes this as per-process, non-distributed fixed-window limiting.
+
+**2. Steelman Current Choices**
+
+- Fixed windows, not sliding windows: valid because the module explicitly says “fixed-window” and “aligned time windows.” The boundary-burst behavior is inherent, not a bug.
+- `time.time()` instead of monotonic time: defensible if “aligned windows” means wall-clock epoch windows shared conceptually across processes or logs. Critique only survives if runtime clock adjustments matter.
+- Single lock: correct and simple for per-process use. Fine unless this is a very hot path.
+- No background cleanup: reasonable for tests or bounded key sets. Critique survives only if keys can be attacker/user-generated at scale.
+- Tuple state `(window_start, count)`: simple, sufficient, and readable.
+
+**3. Author Goal**
+
+Falsifiable claim: `RateWindow` should allow at most `limit` successful `allow(key)` calls per key during each aligned `window_seconds` interval, within one Python process, while remaining thread-safe and testable via injected timestamps.
+
+Wrong-but-plausible alternative reading: this is a production-grade API rate limiter suitable for arbitrary user/IP keys in a long-running public service. Under that reading, unbounded counter retention and wall-clock sensitivity become much more serious.
+
+**4. Assumptions**
+
+- `limit` is intended to be an integer. If wrong, fractional limits behave surprisingly: `limit=1.5` allows 2 requests.
+- Keys are hashable and reasonably bounded. If wrong, `allow()` can raise `TypeError` for unhashable keys or leak memory for unbounded unique keys.
+- Wall-clock jumps are acceptable. If wrong, system time changes can prematurely reset or revive old windows.
+- Window alignment to Unix epoch is intended. If wrong, `time.monotonic()` would be a better default clock.
+- This is not distributed. If wrong, every process independently allows `limit`, multiplying the effective rate.
+
+**5. In-Context Angles**
+
+Domain expert: the core fixed-window logic is correct under normal numeric inputs and thread-safe in-process. Main concerns are wall-clock behavior, integer validation, and stale-key retention.
+
+Skeptical generalist: the implementation is easy to understand, but “request rate limiter” sounds production-adjacent. It should more aggressively reject invalid configuration and avoid growing forever.
+
+End user: behavior is predictable for common use. The surprising parts would be boundary bursts, memory growth with many keys, and the fact that restarting or scaling the process resets enforcement.
+
+Merged view: correctness is solid for bounded, single-process, test-oriented use. It is contested whether cleanup and monotonic time are required: they are not necessary for the stated minimal scope, but they matter if this will run in long-lived services.
+
+**6. Highest-Leverage Issues**
+
+1. **[med] Non-integer `limit` can violate the documented request count semantics** — validate `isinstance(limit, int)` and reject `bool`, or coerce intentionally. Example: `limit=1.5` currently permits 2 requests.
+
+2. **[med] Counters never expire for old keys** — add an opportunistic cleanup path, e.g. prune entries whose `window_start != current_window` periodically or expose a `sweep(now=None)` method. This matters for long-running services with unbounded keys.
+
+3. **[med] Wall-clock time can move backward or forward** — either document that limiter behavior follows system wall time, or inject a clock/default to `time.monotonic()` if epoch-aligned windows are not required.
+
+4. **[low] `window_seconds` accepts non-integer/odd numeric values without making that contract explicit** — decide whether fractional windows are supported. If yes, keep it and document. If no, validate positive integer/float policy clearly.
+
+5. **[low] No tests beyond `demo()`** — convert the assertions into unit tests covering window boundary, per-key isolation, reset, concurrency, fractional/invalid config, and stale-key behavior.
+
+**7. Backward Check**
+
+Skipped: no edit history is provided; I’m not inventing one.
+
+**8. Verdict**
+
+Yes, this is better than leaving it as-is if the next change is small and correctness-focused: validate `limit` as a real integer request count and add tests. The smaller change that captures most of the gain is integer validation plus replacing `demo()` with unit tests. Cleanup and monotonic-time behavior depend on whether this is meant for long-lived production services or bounded test/single-instance use.

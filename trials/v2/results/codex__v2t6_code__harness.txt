@@ -1,0 +1,28 @@
+PRESERVE
+
+- `Job` is simple and readable; keep the small data shape unless requirements demand persistence or retries.
+- The worker marks jobs `RUNNING` under the lock before executing, which prevents two normal worker passes from selecting the same pending job.
+- `batch_size <= 0` is correctly rejected.
+- The scheduler’s public surface is intentionally small, which is appropriate for an in-memory utility.
+
+ISSUES
+
+[severity high] `cancel_job()` can permanently deadlock the scheduler — if `job_id` is missing, it raises `KeyError` without releasing `_lock`; use `with self._lock:` or `try/finally`, and prefer returning `False` for a missing cancellable job unless exceptions are part of the contract.
+
+[severity high] duplicate `job_id` submission can lose jobs or delete the wrong job — `submit_job()` overwrites existing entries, and a previously running job can later `del self._jobs[job_id]`, deleting a newer job with the same ID; reject duplicate IDs while an ID is present, or store immutable job instances keyed by unique generated IDs.
+
+[severity high] `submit_batches()` silently drops remainder jobs — `len(jobs) // batch_size` excludes the final partial batch; iterate with `range(0, len(jobs), batch_size)` so every job is submitted.
+
+[severity med] `start()` is not idempotent and can create multiple worker threads — repeated calls start additional workers while only the last thread is tracked; guard with the lock and return/no-op or raise if already running.
+
+[severity med] `_running` is shared across threads without a proper synchronization primitive — use `threading.Event` for stop/start signaling, ideally paired with a `Condition` so workers wake when jobs arrive instead of polling.
+
+[severity med] failed jobs stay in `_jobs` forever with no public status/query/removal path — either keep completed/failed history intentionally with `get_job_status()` and cleanup policy, or remove failed jobs consistently after recording the failure.
+
+[severity low] `stop()` can block forever if a job hangs — add an optional timeout or document that jobs must be cooperative and bounded.
+
+[severity low] `logger.error(f"...{e}")` loses traceback — use `logger.exception("Error executing job %s", job_to_run.job_id)` inside the `except`.
+
+VERDICT
+
+Do not treat this as ready as-is. The core shape is salvageable, but the lock leak, dropped batch remainder, and duplicate-ID race are correctness bugs that can deadlock the scheduler or lose work. A small fix set can preserve the current design: use context-managed locking, reject duplicate IDs, submit batches by stride, and make `start()` idempotent.

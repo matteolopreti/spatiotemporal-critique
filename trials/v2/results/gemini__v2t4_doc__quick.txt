@@ -1,0 +1,28 @@
+### 1. What's working here that must be preserved?
+*   **Structure and Readability:** The postmortem follows a clean, industry-standard layout (Summary, Timeline, Root Cause, Impact, Action Items) that is easy for stakeholders to digest.
+*   **Quantifiable Impact:** The "Impact" section provides concrete metrics (15% of transactions, 4,200 failed transactions, specific geographic regions) rather than vague generalizations.
+*   **Blameless Tone:** The document focuses on systemic and configuration issues (connection pool limits, alerting gaps) rather than blaming individual operators.
+
+### 2. Steelman the current choices — where might they already be right?
+*   **The 14:30 Deployment as Root Cause:** The author might have written this under the assumption that a pre-release or canary deployment of `AuthService` v2.1.0 was silently active before the "completed successfully" timestamp at 14:30, or that a rolling deployment started around 13:40 and only fully completed at 14:30.
+*   **Labeling the 14:05 Load Balancer Change as "Triggering Event":** The author may have labeled this as the "Triggering Event" because, while traffic degradation started at 13:40, the manual rerouting of traffic to a secondary cluster at 14:05 is what triggered the severe database connection pool saturation (by concentrating traffic or changing connection behavior).
+
+### 3. State what the author is actually trying to achieve, as a specific consequential claim.
+The author is trying to provide a transparent, logically sound postmortem to restore stakeholder confidence by proving the engineering team has accurately diagnosed a major payment outage and established a concrete plan to prevent identical resource exhaustion failures.
+
+### 4. List the assumptions you're making where things are unspecified, and what breaks if each is wrong.
+*   **Assumption 1: Time flows forward linearly.** We assume the timestamps are in chronological order and represent the same timezone (UTC). If this is wrong (e.g., some systems logged in local time and others in UTC), the timeline is not actually broken, but the document is still highly confusing and needs timezone normalization.
+*   **Assumption 2: The "Immediate" action item refers to the 15:10 deployment.** We assume "Roll back the AuthService configuration" matches the "Configuration fix is deployed" at 15:10. If this is wrong, and a rollback happened at a different time, the timeline is missing a critical mitigation event.
+*   **Assumption 3: Customer impact began at 13:40.** We assume the Support team's reports at 13:40 mark the true start of the incident. If this is wrong, and the outage actually started after the 14:30 deployment, then the 13:40 reports were unrelated noise, and the estimated impact metrics are incorrect.
+
+### 5. The 3 highest-leverage issues only, each as: [severity high/med/low] the problem — a concrete fix.
+
+*   **[Severity: High] Temporal and Causal Contradiction:** The timeline states the incident began at 13:40 UTC, but the "Root Cause" section attributes the initial spike to a deployment completed at 14:30 UTC (50 minutes later). Additionally, the "Triggering Event" label is applied to a 14:05 load balancer change, which also occurred after the incident had already been active for 25 minutes.
+    *   *Concrete Fix:* Correct the causal sequence. If the 14:30 deployment caused the issue, change the incident start time to ~14:30. If the incident did start at 13:40, identify the actual change or traffic spike that occurred *before* 13:40 (e.g., "The deployment of AuthService v2.1.0 began rolling out at 13:35 UTC..."). Move the "Triggering Event" label to the actual initiating event.
+*   **[Severity: Medium] Unaddressed 15-Minute Observability Gap:** Customer reports of transaction failures began at 13:40 UTC, but internal monitoring systems did not trigger alerts until 13:55 UTC. This 15-minute gap where engineering was blind is a critical vulnerability, yet there is no action item to address it.
+    *   *Concrete Fix:* Add a Short-term Action Item: "Optimize alerting thresholds on the `/v1/charge` endpoint to reduce the time-to-detect (TTD) from 15 minutes to under 3 minutes during high-volume failures."
+*   **[Severity: Low] Discrepancy in Incident Duration:** The Summary states the incident lasted for "90 minutes before full service was restored" (which aligns with 13:40 to 15:10). However, the Timeline states that monitoring did not confirm recovery until 15:30 (which is 110 minutes).
+    *   *Concrete Fix:* Update the Summary to state: "...lasted for approximately 110 minutes before monitoring confirmed full service restoration at 15:30 UTC."
+
+### 6. Verdict: is this genuinely better than leaving it as is?
+**Yes.** Leaving the document as is presents an impossible timeline where an outage is caused by a deployment that happened 50 minutes after the outage started. Correcting these logical errors is vital for the document to have any professional credibility.

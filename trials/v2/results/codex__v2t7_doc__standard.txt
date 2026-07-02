@@ -1,0 +1,59 @@
+**1. Preserve-List**
+
+- Clear release-note structure: Search, Review workflows, Administration, Performance and fixes, Compatibility.
+- User-facing benefits are concrete rather than vague.
+- Strong correctness cues are present: permission-respecting search, benchmark percentile, retention window, migration/API compatibility.
+- The notes balance new features with fixes and operational guidance.
+- Compatibility section reduces upgrade anxiety and should survive.
+
+**2. Steelman Current Choices**
+
+- “Ships today” creates immediacy and is appropriate for release notes. It survives if these notes are only published on release day.
+- The benchmark claim is specific enough to be useful. It survives if backed by a real standard corpus and not meant as an SLA.
+- “Users only ever see documents they could already open” is the right security promise. It survives if the implementation truly enforces permissions at query time.
+- The review workflow description is product-complete enough for users to understand the lifecycle. It survives.
+- “No migration steps” plus backup recommendation is a good combination: low friction without pretending upgrades are risk-free. It survives.
+
+**3. Author Goal**
+
+Falsifiable claim: Meridian 2.4 is a broadly available, low-risk 2.x release that materially improves search, review control, admin auditability, and reliability without requiring customer migration or breaking integrations.
+
+Wrong-but-plausible alternative reading: this is a marketing announcement optimized for excitement rather than an operational release note. Stress test: the text mostly passes because it includes compatibility, API, retention, performance methodology, and concrete fixes. The main risk is that several claims are so absolute that they need precise qualification to remain correct.
+
+**4. Assumptions**
+
+- Assumption: “today” is resolved by the publishing context. If wrong, the notes become stale or ambiguous after release day.
+- Assumption: “all workspace tiers” includes every hosted paid/free tier, but not necessarily self-hosted. If wrong, availability claims may mislead customers.
+- Assumption: benchmark numbers are measured on representative infrastructure and query mixes. If wrong, the performance claim may be materially overstated.
+- Assumption: permission checks are enforced at search result time, not only index time. If wrong, the security claim is too strong.
+- Assumption: queued comments survive normal transient network failure, not browser close, cache clearing, or device loss. If wrong, “no longer loses” overpromises.
+- Assumption: `/activity` and `/reviews` are versioned or documented elsewhere. If wrong, API consumers lack enough precision.
+
+**5. Three Angles Merged**
+
+Domain expert: Strong concern around absolute security and performance language. Search indexing body text plus permission filtering is a common source of leakage through snippets, counts, cached indexes, or stale ACLs.
+
+Skeptical generalist: The text is credible, but “all tiers,” “under 300 ms,” “only ever,” and “requires no migration” read like claims that need scope.
+
+End user: The release sounds useful and understandable. The likely confusion points are whether their workspace qualifies, whether search will really be that fast for them, and what happens to comments if they close the browser while offline.
+
+Contested: “Under 300 ms at p95” may be a valuable precision signal or an over-specific claim depending on whether the notes link to benchmark conditions. Without that context, I would not remove it, but I would qualify it.
+
+**6. Highest-Leverage Issues**
+
+- [high] Absolute security wording may overpromise — change to: “Search results are filtered by existing document permissions at query time, including body-text matches and snippets.”
+- [high] Performance benchmark lacks scope — add benchmark conditions or qualify: “On our standard benchmark corpus of workspaces up to 100,000 documents, p95 query latency was under 300 ms; actual latency varies by workspace size and query shape.”
+- [med] “Ships today” is not durable — replace or pair with an exact date: “Meridian 2.4 is available starting July 2, 2026...”
+- [med] Tier/self-hosted availability is slightly ambiguous — clarify whether “all workspace tiers” includes self-hosted or hosted tiers only.
+- [med] Comment retry claim may overstate persistence — specify the boundary: “queued locally in the browser and retried when connectivity returns.”
+- [low] API endpoint names are underspecified — use method/version form if applicable, e.g. `GET /v2/activity` and `GET /v2/reviews`.
+
+Abstention: I cannot judge whether the feature claims, benchmark, retention promise, or compatibility guarantees are factually true without product implementation details or test evidence.
+
+**7. Backward Check**
+
+Skipped: no edit history is provided; I will not invent one.
+
+**8. Verdict**
+
+Yes, this is likely better than leaving it as generic release copy: it is specific, scannable, and confidence-building. The smaller change that captures most of the gain is not a rewrite; it is tightening the high-risk claims around performance, permissions, availability scope, and offline comment persistence.

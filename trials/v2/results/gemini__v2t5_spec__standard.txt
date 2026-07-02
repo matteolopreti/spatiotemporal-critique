@@ -1,0 +1,79 @@
+Here is the structured review of the migration plan.
+
+---
+
+### 1. Preserve-list
+The following elements are highly effective and must be preserved in any future revision of this document:
+*   **Strangler Pattern with Facade Routing:** Using an in-monolith facade to control routing dynamically (per-cohort, per-tenant) is the industry standard for low-risk migrations.
+*   **Shadow Mode Validation:** The requirement for two full billing cycles of field-by-field comparison for invoices, and simulated gateway responses for payments, ensures high confidence before live promotion.
+*   **Immutable Ledger Rollback Strategy:** The decision to mark ledger projections as inactive and reconcile them rather than deleting rows preserves the integrity of the audit trail.
+*   **Batch-based Migration Strategy:** Migrating internal accounts first, then inactive, then active cohorts during off-peak hours minimizes blast radius.
+
+---
+
+### 2. Steelman of Current Choices
+*   **Choice: Splitting the migration into four distinct services (Subscription, Invoice, Payment, Ledger).**
+    *   *Steelman:* While managing four concurrent service migrations increases operational overhead, billing domains are highly coupled. Separating them prevents the "distributed monolith" anti-pattern. For example, keeping the Ledger separate from the Invoice Service ensures that bookkeeping remains immutable even if tax calculations or line-item proration logic in the Invoice Service change frequently.
+*   **Choice: Simulating payment processor calls in Phase C shadow mode rather than live dual-writing.**
+    *   *Steelman:* Dual-writing live payments is impossible because credit cards cannot be charged twice, and sending identical requests to gateways violates idempotency constraints. Simulation using recorded responses is the only technically viable way to validate the Payment Service's decision engine without impacting real customer funds.
+
+---
+
+### 3. Author's Actual Goal
+*   **Falsifiable Claim:** The author's goal is to decompose a highly coupled billing monolith into four microservices without causing financial discrepancies, double charges, or data loss, while maintaining a 100% reversible path at any point during the transition.
+*   **Alternative Reading:** The goal is to refactor the billing codebase to improve developer velocity and modernize the tech stack.
+*   **Stress-Test:** If developer velocity were the primary goal, the plan would not mandate slow, two-cycle shadow runs, complex parallel ledger reconciliations, or manual finance sign-offs. These safety gates actively delay time-to-market in favor of absolute financial correctness. Therefore, the alternative reading is false; financial correctness and zero-downtime reversibility are the true primary goals.
+
+---
+
+### 4. Assumptions
+*   **Assumption 1:** The monolith database and the new service databases are isolated such that high-volume batch migrations and shadow writes do not exhaust database connection pools or cause lock contention on the monolith.
+    *   *What breaks if wrong:* Production billing runs on the monolith could fail or time out due to database starvation caused by migration scripts.
+*   **Assumption 2:** Downstream accounting systems (ERPs) can ingest a temporary dual-stream of events or ignore duplicate events during the shadow phases.
+    *   *What breaks if wrong:* The company's official financial books could double-count revenue or liabilities during the parallel run phases.
+*   **Assumption 3:** The billing facade can perform dynamic routing with negligible latency overhead.
+    *   *What breaks if wrong:* Customer checkout flows and invoice rendering pages will experience severe latency degradation, leading to abandoned checkouts.
+
+---
+
+### 5. Multi-Angle Review
+
+#### Angle A: Domain Expert (Fintech/Billing Architect)
+*   The separation of concerns is clean, but the execution order has a critical circular dependency. 
+*   The data migration section claims idempotency, but the cutover checklist contradicts this by describing a raw "append" operation during batch runs.
+
+#### Angle B: Skeptical Generalist (Senior Systems Engineer)
+*   The rollback strategy for Phase C (Payments) is hand-waved. If we roll back to the monolith while a payment is "in-flight" (e.g., authorized but not captured), we risk orphaned transactions or double-captures.
+*   There is no mention of how distributed transactions (sagas or 2PC) are handled when a workflow spans multiple new services (e.g., creating a subscription that generates an invoice and triggers a payment).
+
+#### Angle C: End User (Finance Operations / Customer Support)
+*   The plan correctly identifies the need for runbooks and sign-offs. However, having parallel ledgers during Phase D will make manual customer balance lookups incredibly confusing for support staff unless the admin UI clearly distinguishes between the monolith and service views.
+
+#### Synthesis of Angles (Contested Points)
+*   *The Order of Operations:* The Fintech Architect wants the Ledger (Phase D) established first to act as the source of truth for all other migrations. The Systems Engineer notes that the Ledger cannot function without stable event schemas from the Invoice and Payment services. This tension highlights a structural flaw in the current phase sequencing.
+
+---
+
+### 6. Highest-Leverage Issues
+
+#### [Severity: High] Circular Dependency between Phase B and Phase D
+*   **The Problem:** Phase B states: *"Phase B cannot start until the canonical customer-balance event schema produced by Phase D has been accepted..."* However, the Cutover Checklist states: *"Confirm Phase D starts only after Phase B invoice extraction has completed..."* This is a logical deadlock; neither phase can begin.
+*   **Concrete Fix:** Decouple the *schema design* of Phase D from its *system execution*. Rewrite the Phase B prerequisite to: *"Phase B cannot start until the canonical customer-balance event schema (designed as part of Phase D's contract) has been approved by finance operations."* This allows Phase B to emit the approved schema before Phase D's processing engine is fully live.
+
+#### [Severity: High] Idempotency Violation in Cutover Checklist
+*   **The Problem:** The Data Migration section states the migration script is *"idempotent and safely re-runnable."* However, the Cutover Checklist states: *"...inserting transformed records into each target service table... appending new rows for every source record processed during the batch."* If a batch fails mid-run and is retried, blind appends will create duplicate financial records, violating idempotency and corrupting ledger data.
+*   **Concrete Fix:** Revise the Cutover Checklist to mandate upsert semantics: *"...inserting transformed records into each target service table using idempotent upsert operations (e.g., `ON CONFLICT DO UPDATE` or checking for existing source IDs) to prevent duplicate rows upon batch retries."*
+
+#### [Severity: Med] In-Flight Payment Rollback Vulnerability
+*   **The Problem:** During a Phase C rollback, switching the routing flag back to the monolith while payment intents are pending gateway webhooks will result in orphaned transactions. The monolith won't know how to process webhooks for intents created by the Payment Service.
+*   **Concrete Fix:** Add a transition rule to the Phase C Rollback section: *"During a rollback, the billing facade must continue to route webhook responses and capture requests for existing payment intents to the Payment Service, while routing all new payment attempts to the monolith."*
+
+---
+
+### 8. Verdict
+
+**Genuinely better than leaving it as is?** Yes. The current plan contains a literal deadlock (circular dependency between Phase B and D) and a data-corruption risk (violating idempotency in the cutover checklist). 
+
+**Is there a smaller change?** Yes. The smallest change that captures 95% of the gain is to:
+1. Fix the Phase B/D dependency language.
+2. Change "appending new rows" to "upserting records" in the Cutover Checklist.

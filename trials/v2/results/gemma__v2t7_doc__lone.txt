@@ -1,0 +1,11 @@
+[med] Ambiguity in "partial approvals": The text states that a returned draft keeps approvals for "untouched sections," but it does not define what constitutes an "untouched" section (e.g., is it based on block-level IDs, content hashing, or manual flagging?). — Clarify the mechanism: "Sections remain approved as long as their content remains identical."
+
+[med] Audit log scope: The activity view lists four specific events (sign-ins, permission changes, publishing events, and export actions) but omits "deletions" or "access logs," which are standard requirements for enterprise security audits. — Explicitly include "deletions" and "access requests" in the list of tracked activities.
+
+[low] Search operator clarity: The text lists specific operators (exact phrases, exclusion, author filters) but fails to mention if standard Boolean logic (AND, OR, NOT) is supported. — Add "and boolean operators" to the list of supported search functions.
+
+[low] Performance metric limitation: The 300ms query time is only guaranteed for workspaces up to 100,000 documents. There is no mention of expected behavior or performance degradation for larger datasets. — Add a note clarifying that "performance may vary on workspaces exceeding 100,000 documents."
+
+[med] Self-hosted upgrade risk: The claim that users can upgrade from "any 2.x version" is dangerously broad for self-hosted environments where database schema drift can occur between minor versions. — Add a disclaimer: "While compatible with all 2.x versions, we recommend reviewing the compatibility matrix for specific sub-version migrations."
+
+VERDICT — don't ship. The notes lack the technical specificity required for an enterprise-grade product, particularly regarding audit log scope and the logic of the new "partial approval" workflow, which will lead to high support volume when users find their "untouched" sections are being flagged as changed due to invisible metadata or whitespace changes.

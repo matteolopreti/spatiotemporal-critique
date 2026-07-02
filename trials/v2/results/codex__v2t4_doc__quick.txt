@@ -1,0 +1,29 @@
+1. **What’s working that must be preserved?**  
+It has the right postmortem shape: summary, timeline, root cause, impact, action items. It names customer-visible symptoms, affected endpoint, likely technical failure mode, and prevention work. The action items are directionally strong: better pool saturation alerting, config audit, and load testing.
+
+2. **Steelman the current choices — where might they already be right?**  
+The `AuthService` deployment could still be relevant if it began rolling out before 14:30 and “completed” at 14:30. The load balancer change could be called the triggering event if it amplified an already degraded state. The 90-minute duration could be measured from first confirmed alert at 13:55 to fix at 15:10, rather than first report to full baseline recovery.
+
+3. **What the author is trying to achieve, as a consequential claim**  
+“The outage was caused by an under-provisioned connection pool configuration introduced around the incident window, which produced customer-facing payment failures; if we improve config validation, pool-specific alerting, and pre-production load testing, this class of incident should be much less likely to recur.”
+
+4. **Assumptions and what breaks if wrong**  
+I’m assuming this is meant to be a final factual postmortem. If it is only a rough draft, some timeline contradictions are acceptable placeholders.
+
+I’m assuming the timeline is intended to be causal, not merely chronological. If wrong, readers may over-interpret coincidence as root cause.
+
+I’m assuming `AuthService` participates directly in checkout/payment authorization. If wrong, the named root cause may be technically implausible.
+
+I’m assuming the reported metrics, 15% and 4,200 failed transactions, are backed by incident data. If wrong, the impact section should be qualified or removed.
+
+5. **Three highest-leverage issues only**  
+[severity high] The root cause conflicts with the timeline: failures start at 13:40, but the supposed causal deployment completes at 14:30 — clarify rollout start time, or change root cause to the actual earlier event.
+
+[severity high] “Triggering Event” is assigned to the 14:05 load balancer reroute, but the root cause blames the 14:30 `AuthService` deployment — separate trigger, mitigations, contributing factors, and root cause explicitly.
+
+[severity med] Duration is inconsistent: 13:40 to 15:30 is 110 minutes, not 90 — either change the duration or define the incident window as 13:40-15:10 / 13:55-15:30 with clear reasoning.
+
+Abstain: I can’t judge whether the 15%, 4,200 transactions, regional impact, or “no data breach” claims are accurate without source incident data.
+
+6. **Verdict**  
+Not ready as-is. The draft is useful structurally, but for correctness the causal timeline is too contradictory to publish or rely on. Fixing the timeline/root-cause alignment would be genuinely better than leaving it as is.

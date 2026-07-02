@@ -1,0 +1,29 @@
+This migration plan is structurally sound in its use of the Strangler Pattern, but it contains critical logical flaws in sequencing and data integrity that would lead to catastrophic failures in a production financial system.
+
+### Critical Flaws
+
+[severity high] **Circular/Illogical Dependency between Phase B and Phase D** — The plan states Phase B (Invoice) cannot start until Phase D (Ledger/Balance) is accepted by finance. This is logically inverted for a billing system. Invoices are the *result* of balance calculations and subscription statuses. You cannot validate invoice parity if the underlying ledger schema that defines "balance" hasn't been established.
+**Fix:** Re-order the dependencies. The Ledger Service (or at least the Balance Schema) must be established as a foundational dependency for both Invoice and Payment services.
+
+[severity high] **Non-Deterministic Payment Shadowing** — Phase C proposes simulating processor calls using "recorded gateway responses." Payments are non-deterministic; a response from a gateway depends on the specific state of a transaction (e.g., a 3D Secure challenge, a specific CVV check, or a temporary hold). Replaying old responses will fail to capture real-world edge cases.
+**Fix:** Use a dedicated Sandbox/Test environment for the Payment Service during shadow mode, using actual test credentials provided by the payment processor, rather than recorded responses.
+
+[severity high] **Lack of Synchronization Strategy during "Shadow" periods** — The plan describes running in shadow mode but fails to explain how data remains consistent between the Monolith and the new Services during the transition. If a customer updates their credit card in the Monolith, does it reflect in the Payment Service's shadow state?
+**Fix:** Explicitly define a "Dual-Write" or "Change Data Capture (CDC)" mechanism to ensure the Monolith and the New Service remain in sync during the validation period for each phase.
+
+[severity high] **The "Freeze" Fallacy in Cutover** — The plan calls for "freezing billing mutations" during final cutover. For a global billing system, you cannot "freeze" mutations because of asynchronous webhooks from payment gateways and scheduled cron jobs. If a webhook hits during the "freeze," it will be lost or cause an error.
+**Fix:** Implement a "Webhook Buffer" or "Ingestion Queue" that holds incoming external events during the final delta sync/cutover window to ensure no data is dropped.
+
+[severity med] **Missing PCI-DSS / Data Sovereignty Scope** — Moving payment orchestration and ledgering involves moving PII and potentially Primary Account Numbers (PAN). The plan ignores the security implications of moving this data into new services.
+**Fix:** Add a mandatory "Security & Compliance" section ensuring that the new Payment Service remains in scope for PCI-DSS and that encryption-at-rest/in-transit is maintained during migration.
+
+[severity med] **Ambiguous Rollback Reconciliation** — For Phase C, the plan says "Any in-flight payment intents must be reconciled against gateway state before retrying." It does not specify *how* this reconciliation occurs or what happens if a transaction was partially captured.
+**Fix:** Provide a specific "Reconciliation Script" requirement that maps Gateway Transaction IDs to internal Order IDs to identify exactly which records were processed by which system before the rollback occurred.
+
+[severity low] **Missing "Shadow" Persistence** — The plan mentions comparing shadow outputs but doesn't specify where they are stored. If you don't persist shadow results in a dedicated database, you cannot perform the "field-by-field" comparison required for Phase B.
+**Fix:** Specify that each service must have a "Shadow Database" to store non-production records generated during the validation phase.
+
+[severity low] **Audit Trail Gap** — While the plan mentions an audit trail, it doesn't specify how the *migration itself* is audited (e.g., who authorized the migration of Batch X?).
+**Fix:** Require a "Migration Audit Log" that captures the start/end/success/failure of every batch and the identity of the engineer who initiated the move.
+
+VERDICT — **DON'T SHIP.** The dependency loop between Phase B and Phase D is a fundamental architectural error that would stall the project immediately, and the payment simulation strategy is insufficient for financial integrity. These must be corrected before any engineering work begins.

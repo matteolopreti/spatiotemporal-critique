@@ -1,0 +1,35 @@
+### 1. What's working here that must be preserved?
+* **Strangler Pattern with a Routing Facade:** Decoupling the migration from the monolith's internal structure via a routing facade allows for granular traffic shifting and insulates clients from the migration's underlying complexity.
+* **Multi-Cycle Shadow Validation:** Running the Invoice (Phase B) and Ledger (Phase D) services in shadow mode for multiple billing/accounting cycles to perform field-by-field comparisons is the safest way to ensure financial parity.
+* **Granular Rollback Capabilities:** Supporting per-capability, per-cohort, and per-tenant routing controls allows the team to isolate and revert failures without executing a full system rollback.
+* **Immutable Ledger Design:** Treating ledger entries as immutable and handling rollbacks/corrections via adjustment entries (rather than deletions or direct mutations) preserves the financial audit trail.
+
+### 2. Steelman the current choices — where might they already be right?
+* **Separating Invoicing from Ledgering:** While it increases architectural complexity, separating the Invoice Service (complex, high-change business logic like taxes, discounts, and proration) from the Ledger Service (low-latency, high-reliability, immutable double-entry bookkeeping) is correct. It prevents upstream invoicing bugs from corrupting core financial balances.
+* **Two-Cycle Shadow Windows:** Two billing cycles may seem slow, but billing systems are highly temporal. Edge cases like mid-cycle upgrades, anniversary alignments, and multi-month proration calculations only manifest during actual billing runs. Shorter validation windows would miss these critical variations.
+* **Off-Peak, Cohort-Based Migration:** Migrating inactive accounts first, then active accounts by cohort during off-peak hours, minimizes database lock contention and limits the blast radius of any unexpected data transformation failures.
+
+### 3. State what the author is actually trying to achieve, as a specific consequential claim.
+The author is trying to decompose a highly coupled, high-risk billing monolith into four domain-isolated services (Subscription, Invoice, Payment, and Ledger) to increase deployment velocity and operational safety, *while guaranteeing zero financial leakage, zero double-charging, and uninterrupted financial auditability during the transition.*
+
+### 4. List the assumptions you're making where things are unspecified, and what breaks if each is wrong.
+* **Assumption 1: The monolith and the new services use physically isolated databases.** 
+  * *What breaks:* If they share the same database instance or schemas, resource contention (locks, I/O) during shadow runs or high-volume migrations will degrade production monolith performance and cause cascading outages.
+* **Assumption 2: The existing message bus guarantees ordered, reliable delivery (FIFO) for ledger events.**
+  * *What breaks:* If the message bus drops events or delivers them out of order, the Ledger Service will construct incorrect balance projections, causing false variances during shadow validation and failing finance audits.
+* **Assumption 3: Downstream consumers (e.g., ERP, accounting tools) are insulated from duplicate events during shadow phases.**
+  * *What breaks:* If downstream systems consume events from both the monolith and the new services simultaneously without deduplication, it will result in double-counting revenue and corrupted financial reporting.
+
+### 5. The 3 highest-leverage issues only, each as: [severity high/med/low] the problem — a concrete fix.
+* **[Severity: High] Circular/Deadlocked Phase Dependency** 
+  * *The problem:* Phase B states it "cannot start until the canonical customer-balance event schema produced by Phase D has been accepted." However, the Cutover Checklist states "Confirm Phase D starts only after Phase B invoice extraction has completed production traffic promotion." This creates a logical deadlock where Phase B is blocked by Phase D's schema design, but Phase D's execution is blocked by Phase B's completion.
+  * *A concrete fix:* Decouple the schema definition from Phase D's service implementation. Explicitly define and freeze the canonical customer-balance event schema in Phase A as part of the "service contracts" milestone, allowing Phase B to consume/produce to this contract independently of Phase D's deployment.
+* **[Severity: High] Data Migration Appending Duplicates**
+  * *The problem:* The Data Migration section states the script is "idempotent and safely re-runnable, so failed batches can be retried without creating duplicate records." However, the Cutover Checklist contradicts this by stating: "...inserting transformed records into each target service table, preserving source IDs for traceability but *appending new rows for every source record processed during the batch*." Appending rows on retry will violate idempotency and create duplicate financial records.
+  * *A concrete fix:* Change the cutover checklist instruction to use an "upsert" (insert or update on conflict of the source ID) or a strict deduplication check before insertion, rather than blindly appending rows.
+* **[Severity: Medium] Payment Service Shadow Mode Risk**
+  * *The problem:* Phase C's shadow mode "will simulate processor calls using recorded gateway responses." While safe, this does not validate the network path, API authentication, or real-time gateway latency/timeouts of the new Payment Service, leaving a critical gap before promoting live traffic.
+  * *A concrete fix:* Implement a "dry-run" or "zero-dollar authorization" phase with the live gateway (or use the gateway's sandbox environment with production-like network routing) during Phase C shadow mode to validate actual network connectivity, credentials, and handshake latency before routing any real customer transactions.
+
+### 6. Verdict: is this genuinely better than leaving it as is?
+**Yes.** Despite the sequencing and idempotency contradictions, the plan's core architectural strategy (strangler pattern, multi-cycle shadow validation, immutable ledger design, and cohort-based rollouts) is exceptionally robust. Leaving the billing system as a monolith poses a growing risk to deployment velocity and blast radius. Fixing the identified sequencing and data-loading errors makes this an excellent, low-risk migration blueprint.

@@ -1,0 +1,44 @@
+This review evaluates the **Migration Plan: Billing Monolith to Services** for correctness, architectural integrity, and operational safety.
+
+### 1. Preserve-list
+*   **Strangler Pattern Architecture:** The use of a billing facade to route traffic while keeping legacy paths active is the correct way to handle high-risk financial migrations.
+*   **Shadow Mode Validation:** Requiring field-by-field comparison for invoice drafts and simulated processor calls for payments is non-negotiable for financial correctness.
+*   **Finance Sign-off Requirements:** The explicit requirement for "finance-approved thresholds" and "audit trails" ensures the business remains the ultimate arbiter of truth.
+*   **Idempotent Migration Scripts:** Ensuring that migration jobs can be retried without side effects is critical for data integrity.
+
+### 2. Steelman
+*   **The Facade Choice:** While it adds a layer of indirection, it is the only way to ensure "no change in customer-facing behavior" because it allows for atomic switching of logic without changing the public API contract.
+*   **Shadowing Phase B/C:** This might seem like "wasted" compute/effort, but in billing, the cost of a single incorrect tax calculation or missed payment is significantly higher than the cost of running parallel infrastructure.
+*   **The Ledger as the Final Stage:** Delaying the Ledger (Phase D) ensures that the "Source of Truth" for balances isn't split across two systems simultaneously until the very end, preventing "split-brain" balance issues.
+
+### 3. Author's Goal
+**Falsifiable Claim:** The goal is to migrate a high-risk financial system with **zero variance in invoice totals and zero increase in failed payments** by using shadow execution and manual reconciliation as the primary validation gates.
+*   **Wrong-but-plausible alternative:** The goal is to decompose a bloated monolith into microservices to improve developer velocity and deployment frequency (this would be the goal if "Shadow Mode" and "Finance Sign-off" were secondary to "Deployment Frequency").
+
+### 4. Assumptions
+*   **Assumption:** The Monolith database can handle the increased load of "Double Writing" or "Shadow Reading" during Phase B/C without hitting connection limits or locking issues. *Breaks if:* DB contention causes production timeouts in the legacy path.
+*   **Assumption:** The Message Bus provides "At-Least-Once" delivery and that all consumers are idempotent. *Breaks if:* A message is processed twice, leading to a double-charge or double-ledger entry.
+*   **Assumption:** Finance Operations can provide timely sign-off on reconciliation reports. *Breaks if:* The manual review process becomes a bottleneck that stalls the migration for months.
+
+### 5. Multi-Perspective Review
+*   **Domain Expert (Distributed Systems):** Concerned about the lack of an explicit **Transaction Strategy**. Moving from a monolith to services turns "Atomic" database transactions into "Distributed" transactions. There is no mention of the Saga Pattern or Transactional Outbox for ensuring that a Payment Success *always* results in a Ledger Entry.
+*   **Skeptical Generalist:** Points out a major project management flaw: **Phase B depends on Phase D.** The plan states Phase B cannot start until the schema from Phase D is accepted. This creates a "circular" dependency where you can't finish the Invoice service because the Ledger service (which comes later) isn't ready.
+*   **End User:** Concerned about the "Rollback" window. If a rollback occurs during an active payment attempt, will I be charged twice? The plan mentions "reconciling against gateway state," but doesn't specify how that is automated.
+
+**Merged Critique (Contested):**
+The technical strategy for **Data Integrity** is strong on *Validation* (Shadowing) but weak on *Concurrency/Consistency* (Distributed Transactions). The **Dependency Loop** between Phase B and D is a significant project risk.
+
+### 6. Highest-Leverage Issues
+
+| Severity | Problem | Concrete Fix |
+| :--- | :--- | :--- |
+| **High** | **Circular Dependency:** Phase B requires Phase D's schema, but Phase D is the final migration step. | Decouple the *Schema Definition* from the *Implementation*. Define a "Contract" for Ledger events early; allow Phase B to use a Mock/Stub for those events so it can proceed independently of Phase D's actual deployment. |
+| **High** | **Distributed Transaction Risk:** The plan lacks a strategy for partial failures (e.g., Payment succeeds, but the network dies before the Ledger is updated). | Explicitly mandate the **Transactional Outbox Pattern**. Ensure that the Payment Service writes to its own DB and an "Outbox" table in one transaction; a separate relay then pushes the event to the Message Bus for the Ledger Service. |
+| **Med** | **Split-Brain Data:** During migration, there is no clear "Owner" of a customer's balance if they are caught between two systems. | Define an **Ownership Map**. Each Customer ID must be mapped to either "Monolith" or "Service." Migration should be performed by *Cohort*, ensuring a customer is never in a "transitioning" state across both systems simultaneously for the same billing period. |
+| **Low** | **Rollback Ambiguity:** The plan mentions reconciling gateway state but doesn't define the "Source of Truth" during a rollback. | Add a requirement that the **Payment Gateway State** is the source of truth for all payment-related rollbacks, and the Monolith/Service DBs must be updated to match the Gateway's final state before any retry logic triggers. |
+
+### 8. Verdict
+**The plan is better than leaving it as is.** The inclusion of Shadow Mode and Finance Sign-offs makes this a professional-grade migration plan for high-stakes systems. However, it currently risks a **project stall** due to the Phase B/D dependency and **data corruption** due to the lack of a distributed transaction strategy (Sagas/Outbox).
+
+**Smaller change that captures most gain:**
+Fix the **Phase B/D Dependency** by decoupling the Schema Contract from the Implementation. This allows the team to actually start work on Invoices without waiting for the Ledger service to be fully built.

@@ -1,0 +1,19 @@
+1. PRESERVE — Simple `Job` abstraction with explicit `job_id`, callable, args, kwargs, and status is workable. The scheduler uses a lock around shared `_jobs` access in the worker and submit path, which is the right basic direction.
+
+2. ISSUES — [severity high] `submit_batches` silently drops remainder jobs when `len(jobs) % batch_size != 0` — iterate over `range(0, len(jobs), batch_size)` so the final partial batch is submitted.
+
+[severity high] `cancel_job` manually acquires/releases the lock and can deadlock if anything raises between acquire and release — rewrite with `with self._lock:` and avoid raising while holding unreleased locks.
+
+[severity high] failed jobs are never removed from `_jobs`, so the registry leaks failed jobs forever — either delete failed jobs after marking them, or keep a bounded/history structure separate from the active queue.
+
+[severity med] `start()` can be called multiple times, creating multiple worker threads racing over the same registry — guard with the lock and return or raise if already running.
+
+[severity med] `_running` is read/written without synchronization, so `stop()` visibility is not fully disciplined across threads — protect it with the lock or use `threading.Event`.
+
+[severity med] `stop()` may block until the current job finishes, with no timeout or cancellation semantics — document that behavior and consider `join(timeout=...)` plus a graceful shutdown event.
+
+[severity med] duplicate `job_id` submissions overwrite existing jobs, including pending/running jobs — reject duplicates or define explicit replacement behavior.
+
+[severity low] logging loses traceback details — use `logger.exception("Error executing job %s", job_to_run.job_id)` inside the exception handler.
+
+VERDICT — not good as-is; the shape is reasonable, but batching correctness, lifecycle control, and lock handling have real correctness bugs.

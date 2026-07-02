@@ -1,0 +1,21 @@
+PRESERVE
+
+The module has a clear pipeline: fetch, parse, merge, push. Local conflict policy is explicit, cache helpers are isolated, and `merge_profiles` copies remote profiles before applying local edits, which avoids mutating parsed remote entries in the common path.
+
+ISSUES
+
+[severity high] cache expiry is inverted, so cached profiles effectively never expire — change `_cache_get` to `if time.time() - stored_at < CACHE_TTL_SECONDS:` and expire otherwise.
+
+[severity high] grace-window time comparison drops timezone info and compares UTC strings to local naive time — parse as aware UTC and compare to `datetime.now(timezone.utc)`, preserving offsets instead of calling `.replace(tzinfo=None)`.
+
+[severity med] malformed remote payloads can still crash parsing — validate that `body` is a dict, `profiles` is a list, and each `p` is a dict before calling `.get`.
+
+[severity med] invalid or future `edited_at` values can make merges crash or incorrectly let local edits win — handle parse errors and reject future timestamps or clamp them according to policy.
+
+[severity med] local edit profiles can overwrite identity fields or create records without a matching `id` — when applying local edits, enforce `profile["id"] == user_id` or exclude immutable fields like `id` from `update()`.
+
+[severity low] cache returns mutable profile lists by reference — return/store shallow copies or immutable snapshots if callers might mutate returned profiles elsewhere.
+
+VERDICT
+
+Not ready as-is for correctness-sensitive sync. The cache TTL bug and timezone bug directly violate the stated behavior: profiles can go stale indefinitely, and “local edits win within the grace window” can be wrong depending on host timezone. The smallest meaningful fix is to correct TTL math, make grace-window comparisons timezone-aware, and harden remote/local input validation around those paths.

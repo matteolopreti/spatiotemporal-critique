@@ -1,0 +1,63 @@
+Here are the problems identified in the code:
+
+### [severity high] Off-by-one bug in `_page_bounds` skips files
+If the total number of files is a multiple of `page_size`, the last file of the batch is silently omitted from the sync. For example, if `total = 100` and `page_size = 100`, the bounds returned are `[(0, 99)]`, which completely skips the 100th file (index 99).
+* **Concrete Fix**: Simplify `_page_bounds` to use standard slicing bounds:
+  ```python
+  def _page_bounds(self, total: int, page_size: int) -> list[tuple[int, int]]:
+      """Return half-open page bounds for a collection."""
+      return [(start, min(start + page_size, total)) for start in range(0, total, page_size)]
+  ```
+
+### [severity high] Incomplete ignore logic syncs files inside ignored directories
+`_is_ignored` only checks the leaf `path.name`. If there is an ignored directory like `.git`, a file inside it like `.git/config` has the name `config`. Since `config` does not start with `.` or end with `.tmp`, it will not be ignored, causing internal repository files, build artifacts, or virtual environments to be uploaded.
+* **Concrete Fix**: Check all components of the relative path:
+  ```python
+  def _is_ignored(self, path: Path) -> bool:
+      """Skip transient files that should not be synchronized."""
+      try:
+          rel_parts = path.relative_to(self.root).parts
+      except ValueError:
+          return True
+      return any(
+          part.startswith(".") or part.endswith(".tmp") or part == "sync.lock"
+          for part in rel_parts
+      )
+  ```
+
+### [severity med] File descriptor leak in `_sha256_file`
+If a file is empty, `_sha256_file` returns `EMPTY_SHA256` immediately without closing the file handle. Furthermore, if an exception occurs during reading, the file handle is leaked because there is no `try...finally` block or `with` statement.
+* **Concrete Fix**: Use a `with` context manager and simplify the hashing loop:
+  ```python
+  def _sha256_file(self, path: Path) -> str:
+      """Hash a file using streaming reads."""
+      digest = hashlib.sha256()
+      with path.open("rb") as handle:
+          for block in iter(lambda: handle.read(1024 * 1024), b""):
+              digest.update(block)
+      return digest.hexdigest()
+  ```
+
+### [severity med] Unsafe type casting in `_record_changed` can crash the sync
+If the remote manifest contains `None` or non-integer values for `"size"`, `int(remote.get("size", -1))` will raise a `TypeError` or `ValueError`, crashing the entire sync process.
+* **Concrete Fix**: Safely parse and compare the values:
+  ```python
+  def _record_changed(self, local: FileRecord, remote: dict[str, Any]) -> bool:
+      """Return true when local metadata differs from a remote manifest entry."""
+      try:
+          remote_size = remote.get("size")
+          remote_sha = remote.get("sha256")
+          if remote_size is None or remote_sha is None:
+              return True
+          return int(remote_size) != local.size or str(remote_sha) != local.sha256
+      except (ValueError, TypeError):
+          return True
+  ```
+
+### [severity low] Performance bottleneck: Hashing all files on every scan
+The `scan` method hashes every single file in the directory tree using SHA256, even if the file has not changed. For large directories or large files, this makes the scan extremely slow.
+* **Concrete Fix**: While this may be a design constraint of the `FileRecord` protocol, a more efficient sync client would first compare `mtime` and `size` and only compute/compare hashes when those match, or store a local cache of hashes.
+
+---
+
+VERDICT — don't ship, because of critical correctness bugs that skip files during batching, leak file descriptors on empty/failed reads, and upload sensitive internal files (like `.git/config`) due to incomplete ignore-path evaluation.

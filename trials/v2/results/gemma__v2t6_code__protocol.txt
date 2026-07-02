@@ -1,0 +1,16 @@
+1. PRESERVE
+*   The use of a daemon thread (`daemon=True`) ensures the background worker doesn't block process exit.
+*   The encapsulation of job state (Pending, Running, Completed, Failed) within the `Job` object.
+*   The locking mechanism around dictionary access to prevent `RuntimeError: dictionary changed size during iteration`.
+
+2. ISSUES
+*   [High] **Deadlock Risk in `cancel_job`**: The lock is acquired manually via `.acquire()` and released via `.release()`. If the `KeyError` is raised, the code execution jumps out of the method without reaching the release call, leaving the lock held indefinitely. 
+    *   **Fix**: Use a context manager: `with self._lock:`.
+*   [High] **Off-by-one in `submit_batches`**: The calculation `num_batches = len(jobs) // batch_size` discards any remaining jobs if the total count isn't perfectly divisible by the batch size. 
+    *   **Fix**: Use a range with a step: `for i in range(0, len(jobs), batch_size):`.
+*   [Med] **Inefficient Job Selection**: The worker loop performs an $O(N)$ linear scan of all jobs to find a single "PENDING" task. As the job history grows, this becomes increasingly slow. 
+    *   **Fix**: Use a `queue.Queue` for pending jobs to achieve $O(1)$ retrieval while keeping the dictionary for status lookups.
+*   [Med] **Latency in Execution**: The worker uses `time.sleep(0.1)` when idle, introducing up to 100ms of artificial latency even if a job is immediately available.
+    *   **Fix**: Use a `threading.Condition` or `queue.Queue.get()` which blocks efficiently until an item is available.
+
+VERDICT — Not good as-is due to the deadlock risk in `cancel_job` and the logic error in batch submission.

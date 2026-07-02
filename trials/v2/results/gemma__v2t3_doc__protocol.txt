@@ -1,0 +1,16 @@
+1. PRESERVE
+*   The architectural flow (Vector $\rightarrow$ Kafka $\rightarrow$ Go Consumer $\rightarrow$ OpenSearch/S3) is a standard, production-proven pattern for high-throughput log processing.
+*   The tiered storage strategy (Hot/Warm/Cold) is well-defined and necessary for cost control at this scale.
+*   The inclusion of a Dead Letter Queue (DLQ) and schema enforcement in the Processing Layer is critical for operational stability.
+
+2. ISSUES
+*   [High] **Mathematical Error in Capacity Planning:** The document states that 50,000 events/sec at 2 KB per event equals "100 GB per second." This is incorrect; $50,000 \times 2\text{ KB} = 100,000\text{ KB/s}$, which is **100 MB/s**.
+    *   *Fix:* Correct the unit to MB/s. If the intent was actually 100 GB/s, the event count would need to be ~50 million per second.
+*   [High] **Regional Availability Gap:** The goals claim resilience to "regional cloud outages," but the architecture describes a "multi-AZ Kafka cluster" in a "primary cloud region." Multi-AZ is not Multi-Region; a regional outage will still sever the ingestion path.
+    *   *Fix:* Specify a Cross-Region Replication (CRR) strategy or an active-passive failover mechanism for the Kafka/Ingestion layer to meet the stated goal.
+*   [Medium] **Missing Volume Calculation:** The document states that 12 OpenSearch nodes are required to "handle the daily indexing volume," but it fails to actually calculate what that volume is based on the provided metrics.
+    *   *Fix:* Add a calculation: $50,000 \text{ events/sec} \times 2\text{ KB} \times 86,400 \text{ seconds/day} \approx 8.6 \text{ TB per day}$. This is necessary to justify the 1.5 TB NVMe storage per node.
+*   [Low] **Partitioning Logic:** The document ties partition count (15) primarily to "disk I/O limits." In Kafka, partitions are primarily for consumer parallelism.
+    *   *Fix:* Clarify that the partition count must be $\ge$ the number of concurrent consumer instances to ensure horizontal scalability of the Processing Layer.
+
+VERDICT — Not good as-is. The massive mathematical error in Section 3 (MB/s vs GB/s) would lead to catastrophic over-provisioning if implemented literally, and the regional availability goal is currently unsupported by the proposed architecture.

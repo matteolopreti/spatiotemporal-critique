@@ -1,0 +1,15 @@
+**PRESERVE**
+*   **Protocol-based Transport:** The use of a `Transport` Protocol allows for clean decoupling between the sync logic and the storage backend (S3, local FS, etc.), making it highly testable.
+*   **Streaming Hash Implementation:** The `_sha256_file` method correctly uses a chunked read (`1024 * 1024`) rather than loading full files into memory, ensuring the client can handle files larger than available RAM.
+*   **Frozen Dataclasses:** Using `frozen=True` for `FileRecord` and `ChangeSet` ensures that metadata remains immutable as it flows through the comparison and batching logic, preventing accidental side-effects during processing.
+
+**ISSUES**
+*   **[severity high] Off-by-one error in `_page_bounds`:** The logic `if end == total and total % page_size == 0: end -= 1` is incorrect. If a user has 100 files and a batch size of 100, the code calculates `end=100`, sees that it is divisible by 100, and sets `end=99`. Because Python slices are exclusive at the stop index (`files[0:99]`), the 100th file (index 99) will be skipped.
+    *   *Fix:* Remove the `if` block entirely. The standard `min(start + page_size, total)` already correctly handles the boundary for all cases.
+*   **[severity med] Resource leak in `_sha256_file`:** The file handle is opened via `path.open("rb")` but not managed by a context manager. If an exception occurs during `read()` or `digest.update()`, the file descriptor will remain open until the garbage collector eventually closes it.
+    *   *Fix:* Wrap the logic in `with path.open("rb") as handle:`.
+*   **[severity low] Memory scaling of `scan`:** The `scan` method returns a full dictionary of all files (`dict[str, FileRecord]`). While acceptable for "small" syncs, this will cause high memory pressure or OOM errors if the root directory contains hundreds of thousands of files.
+    *   *Fix:* If scaling is expected, refactor `scan` to return an iterator and perform a streaming comparison (though this complicates the current `ChangeSet` construction).
+
+**VERDICT**
+The implementation is architecturally sound but contains a critical logic error in the batching calculation that will cause data loss by skipping files. The code also lacks standard Pythonic safety for file handles. **Do not deploy until the `_page_bounds` logic is simplified and the hash function uses a context manager.**

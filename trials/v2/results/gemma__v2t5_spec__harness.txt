@@ -1,0 +1,19 @@
+**PRESERVE**
+The plan correctly identifies the **Strangler Pattern** as the safest vehicle for financial migrations. It prioritizes **Shadow Mode** for both Invoice and Payment processing—a critical requirement for high-integrity systems. The inclusion of an **Audit/Ledger-first** mentality (Phase D) ensures that the system of record remains consistent even if the UI or peripheral services are still in flux. The **Rollback** section is exceptionally strong, specifically acknowledging the immutability of ledger entries and the need for "inactive" marking rather than deletion.
+
+**ISSUES**
+
+*   **[severity high] Circular/Blocked Dependency:** Phase B (Invoice) states it cannot start until Phase D (Ledger) schema is accepted by finance. This creates a sequencing bottleneck where you cannot extract the invoice logic because the ledger hasn't been built yet, but the ledger needs the data from the invoice extraction to be validated.
+    *   **Fix:** Decouple the *Schema Approval* from the *Implementation*. Phase B should proceed using a "Draft" schema that is backward-compatible with the final Phase D Ledger requirements. Establish a "Contract First" agreement where Phase D's expected inputs are defined as an interface, allowing Phase B to develop against a mock of the future ledger.
+
+*   **[severity high] Side-Effect Management in Shadow Mode:** The plan mentions "simulating processor calls" and "shadow mode," but does not explicitly forbid or manage side effects (e.g., sending two "Payment Successful" emails, triggering two "Invoice Ready" notifications, or double-deducting credits) during the shadow period.
+    *   **Fix:** Explicitly define a **Side-Effect Suppression Layer**. During Phase B and C shadow runs, all external-facing actions (Emails, SMS, Webhooks to 3rd parties) must be intercepted and logged but *not* dispatched unless the "Live" path is also triggered.
+
+*   **[severity med] The "Active Record" Migration Gap:** The plan describes batch migration for historical records but lacks a mechanism for handling **concurrent mutations** on active records during the migration window (e.g., a user updates their subscription *while* the migration script is processing their row).
+    *   **Fix:** Define a **State-Locking or Dual-Write mechanism**. For active customers, implement a "Migration Pending" flag in the monolith. While this flag is set, all mutations must be mirrored to both the old and new schemas until the migration batch for that specific record completes successfully.
+
+*   **[severity med] Reconciliation Variance Thresholds:** The plan mentions "variance within the finance-approved threshold" but does not specify what constitutes a "material variance." In financial systems, even a 0.01% variance can be a blocker if it occurs on high-volume transactions.
+    *   **Fix:** Define **Zero-Tolerance Categories**. Specify that for *Ledger Balances* and *Payment Totals*, the threshold is exactly zero (1:1 parity). Only "Non-Critical" fields (e.g., timestamp formatting, non-financial metadata) should allow for variance during the shadow period.
+
+**VERDICT**
+The plan is architecturally sound and demonstrates a high degree of maturity regarding risk mitigation (specifically in the Rollback and Shadowing sections). However, it currently suffers from a **logical dependency loop** between Phase B and D and lacks a concrete strategy for **concurrency control** during active data migration. Once the dependency loop is unblocked and the "Active Record" mutation strategy is defined, this plan is ready for execution.

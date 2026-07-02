@@ -1,0 +1,31 @@
+### 1. What's working here that must be preserved?
+* **Concrete, verifiable metrics:** Specifying search performance ("under 300 ms at the 95th percentile on workspaces up to 100,000 documents") and retention limits ("180 days") builds high trust with technical buyers and administrators.
+* **No-nonsense, zero-fluff tone:** The text focuses entirely on utility, features, and fixes, completely avoiding marketing jargon or hyperbolic language.
+* **The "Compatibility" section:** Explicitly stating migration requirements, API deprecation status, and self-hosted upgrade paths preempts support tickets and reduces deployment anxiety for enterprise customers.
+
+### 2. Steelman the current choices — where might they already be right?
+The author chose to write these notes with a high degree of technical density and brevity. This is likely the correct choice because:
+* **The target audience is busy:** Workspace admins and power users reading release notes want to quickly scan for features that unblock their teams or changes that might break their existing workflows.
+* **It establishes product maturity:** Treating complex features like "partial template approvals" and "seat reassignment document preservation" as matter-of-fact updates signals a stable, enterprise-grade platform.
+
+### 3. The author's actual objective
+The author is trying to drive immediate, low-friction upgrades to Meridian 2.4 across all customer tiers by demonstrating high-value feature additions (search, reviews, admin tools) while assuring technical stakeholders of absolute backward compatibility and system stability.
+
+### 4. Assumptions and what breaks if they are wrong
+* **Assumption 1:** Meridian is a B2B SaaS/hybrid document collaboration tool (similar to Notion or Confluence). 
+  * *If wrong:* If this is a consumer-facing app, the heavy focus on "workspace tiers," "admins," "CSV exports," and "A4 paper sizes" will alienate or bore the average user.
+* **Assumption 2:** The target reader is already familiar with Meridian's core concepts (e.g., "workspaces," "history panel," "templates").
+  * *If wrong:* New users or prospects reading this will struggle to understand the context of features like "sidebar hydration" or "seat reassignment."
+* **Assumption 3:** The API endpoints `/activity` and `/reviews` inherit the same strict permission models mentioned in the Search section.
+  * *If wrong:* If these endpoints lack proper scoping, admins might unknowingly expose sensitive document history and review logs to unauthorized API tokens.
+
+### 5. The 3 highest-leverage issues
+* **[Severity: Med] Ambiguity in offline comment persistence:** The text states that comments are "queued locally and retried" if the network drops. If a user closes their browser tab before the network restores, they need to know if their work is lost.
+  * *Fix:* Clarify the storage mechanism: "...comments are queued locally in browser storage—surviving tab closures and reloads—and retried automatically when connection is restored."
+* **[Severity: Med] Confusing "partial approval" logic:** The text says "a returned draft keeps approvals for untouched sections." If a draft is returned (rejected), subsequent edits by the author could easily invalidate the context of those "untouched" sections.
+  * *Fix:* Clarify how safety is maintained: "...a returned draft keeps approvals for untouched sections, locking those sections from edits to prevent invalidating previous reviews."
+* **[Severity: Low] Vague seat reassignment flow:** It states "ownership transfers to a nominated successor," but doesn't clarify *when* or *how* this nomination occurs.
+  * *Fix:* Clarify the admin workflow: "...ownership transfers to a successor nominated by the admin during the deprovisioning flow, preserving the full edit history."
+
+### 6. Verdict
+**Yes.** Implementing these minor clarifications preserves the excellent, concise tone of the original notes while eliminating critical ambiguities around data loss (offline comments), security/context (partial approvals), and administrative workflows.

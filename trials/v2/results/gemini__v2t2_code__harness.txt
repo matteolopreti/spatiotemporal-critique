@@ -1,0 +1,63 @@
+### PRESERVE
+
+* **Protocol-Oriented Transport**: Decoupling the sync engine from the actual storage provider via the `Transport` protocol is excellent. It makes the client highly testable with mocks.
+* **Batching Interface**: Designing `upload_many` and `delete_many` to accept batches instead of single-file operations prevents network round-trip bottlenecks.
+* **Deterministic Sorting**: Sorting both `uploads` and `deletes` in `diff_remote_manifest` ensures deterministic execution order, which makes dry-runs and logging highly predictable.
+* **Immutable Records**: Using frozen dataclasses (`FileRecord`, `ChangeSet`) prevents accidental mutation of state during the diffing and synchronization phases.
+
+---
+
+### ISSUES
+
+* **[high] Silent omission of files in batching due to off-by-one error in `_page_bounds`** — When the total number of items to upload or delete is an exact multiple of `batch_size`, the final item of the collection is silently dropped. For example, if `total = 100` and `page_size = 100`, the bounds returned are `[(0, 99)]`, omitting index `99` (the 100th file).
+  * *Concrete Fix*: Replace the manual paging loop with a standard, clean list comprehension:
+    ```python
+    def _page_bounds(self, total: int, page_size: int) -> list[tuple[int, int]]:
+        """Return half-open page bounds for a collection."""
+        return [(i, min(i + page_size, total)) for i in range(0, total, page_size)]
+    ```
+
+* **[high] File descriptor leak on empty files and unhandled exceptions in `_sha256_file`** — The file handle is opened using `path.open("rb")` but is not wrapped in a `with` statement. If a file is empty (`first_block == b""`), the method returns early without calling `handle.close()`. Additionally, if an exception occurs during reading, the file descriptor is leaked. Under a large directory tree, this will quickly trigger `OSError: [Errno 24] Too many open files`.
+  * *Concrete Fix*: Use a context manager to guarantee closure, and simplify the redundant double-read logic:
+    ```python
+    def _sha256_file(self, path: Path) -> str:
+        """Hash a file using streaming reads."""
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+        return digest.hexdigest()
+    ```
+
+* **[medium] Unhandled `ValueError` on out-of-bounds symlinks during path relativization** — `path.is_file()` resolves symlinks and returns `True` if the symlink points to a file. If a symlink inside `self.root` points to a file *outside* `self.root`, `self._relative(path)` will call `path.relative_to(self.root)`, which raises a `ValueError` and crashes the entire scan.
+  * *Concrete Fix*: Exclude symlinks during the scan, or safely catch `ValueError` when calculating relative paths:
+    ```python
+    def scan(self) -> dict[str, FileRecord]:
+        """Walk the root directory and return file metadata keyed by relative path."""
+        records: dict[str, FileRecord] = {}
+        for path in self.root.rglob("*"):
+            # Skip symlinks to prevent out-of-bounds relative_to failures
+            if path.is_symlink() or not path.is_file() or self._is_ignored(path):
+                continue
+            try:
+                rel = self._relative(path)
+            except ValueError:
+                continue  # Safely skip files that cannot be relativized
+            stat = path.stat()
+            records[rel] = FileRecord(
+                path=rel,
+                size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                sha256=self._sha256_file(path),
+            )
+        return records
+    ```
+
+* **[low] Dead-weight metadata tracking of `mtime_ns`** — `FileRecord` collects and stores `mtime_ns`, but `_record_changed` only compares `size` and `sha256`. If modification time is not used for change detection, querying `stat.st_mtime_ns` adds unnecessary overhead during directory scanning.
+  * *Concrete Fix*: Either utilize `mtime_ns` in `_record_changed` as a fast-path bypass to avoid hashing unchanged files (if a local state cache is introduced), or remove `mtime_ns` from `FileRecord` entirely to keep the metadata footprint minimal.
+
+---
+
+### VERDICT
+
+**CRITICAL DEFECTS FOUND** — The implementation cannot be approved for production use in its current state. While the structural architecture is clean, the batching logic (`_page_bounds`) introduces silent data loss by omitting files, and the hashing function (`_sha256_file`) leaks file descriptors on empty files or read failures. Apply the fixes for the batching and file-handling issues before deployment.

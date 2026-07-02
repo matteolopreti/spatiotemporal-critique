@@ -1,0 +1,21 @@
+This document contains several critical mathematical errors and architectural contradictions that would lead to catastrophic infrastructure over-provisioning or system failure if implemented as written.
+
+**[severity high] Throughput Calculation Error:** The document states that 50,000 events/sec at 2 KB per event equals "100 GB per second." This is mathematically incorrect. $50,000 \times 2\text{ KB} = 100,000\text{ KB/s}$, which is **100 MB/s**, not 100 GB/s.
+*   **Fix:** Correct the text to "100 MB per second." A 1,000x error in capacity planning would lead to massive waste of cloud spend and incorrect hardware selection.
+
+**[severity high] Regional Availability Contradiction:** The goals state the system must be resilient to "regional cloud outages," but the architecture describes a "multi-AZ Kafka cluster... in our primary cloud region." Multi-AZ is not Multi-Region; a regional outage will take down the entire ingestion endpoint.
+*   **Fix:** Either update the goal to "Zone-level resilience" or, preferably, implement a Cross-Region Replication (CRR) strategy and a Global Load Balancer (e.g., AWS Global Accelerator) to route traffic to a secondary region.
+
+**[severity high] SLO Calculation Error:** The document states that 99.9% availability translates to "4.32 minutes per month." This is incorrect. $0.1\%$ of a 30-day month ($43,200$ minutes) is **43.2 minutes**.
+*   **Fix:** Correct the value to "43.2 minutes." The current figure represents roughly 99.95% availability.
+
+**[severity med] Kafka Partitioning Logic:** The document suggests "15 partitions per topic" to avoid exceeding disk I/O limits. Partition count is primarily a mechanism for **consumer parallelism**, not a direct throttle for disk I/O on the broker side (which is managed by segments and file handles).
+*   **Fix:** Define partition counts based on the maximum number of concurrent consumer instances required to keep up with the 50,000 events/sec peak.
+
+**[severity med] Data Loss Guarantee Gap:** The document claims "Zero unrecoverable log messages once acknowledged by the Kafka buffering layer." However, if a message is acknowledged by Kafka but fails to be processed by the Go Consumer (e.g., due to a schema violation that isn't caught by the DLQ logic) or if the OpenSearch cluster rejects the write due to a disk-full error, the data is lost.
+*   **Fix:** Clarify that "Zero unrecoverable" applies only to messages successfully committed to the Kafka buffer; add a requirement for "At-Least-Once" delivery semantics where the consumer only acknowledges the Kafka offset *after* successful persistence in OpenSearch or the DLQ.
+
+**[severity low] Indexing Latency Ambiguity:** The 3.0-second searchability SLO is highly dependent on OpenSearch's `refresh_interval` and shard distribution. At 50k events/sec, standard indexing may struggle to meet this without significant tuning.
+*   **Fix:** Add a technical note specifying that the "Refresh Interval" will be tuned (e.g., 1 second) and that high-cardinality fields must be mapped correctly to ensure search performance at scale.
+
+VERDICT — **don't ship.** The document contains fundamental mathematical errors in both throughput calculations and SLA definitions, and the architecture fails to meet its own stated goal of regional resilience. These errors would result in a failed deployment and incorrect infrastructure scaling.

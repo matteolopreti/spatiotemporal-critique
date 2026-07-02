@@ -1,0 +1,21 @@
+1. What's working here that must be preserved?
+The `Transport` Protocol is an excellent abstraction; it allows for easy swapping of backends (S3, local filesystem, etc.) without touching the core logic. The streaming hash implementation in `_sha256_file` is also critical as it prevents Out-of-Memory (OOM) errors when processing large files.
+
+2. Steelman the current choices — where might they already be right?
+The manifest-based approach (comparing hashes/sizes before uploading) is superior to "last modified" checks because timestamps are notoriously unreliable across different filesystems or OS types. Batching (`upload_many`) is also a requirement for production systems to avoid the overhead of thousands of individual HTTP requests.
+
+3. State what the author is actually trying to achieve, as a specific consequential claim.
+The author is attempting to build a **memory-efficient, batch-aware synchronization engine** that ensures data integrity by comparing file hashes rather than relying on volatile metadata like modification times.
+
+4. List the assumptions you're making where things are unspecified, and what breaks if each is wrong.
+*   **Assumption:** The remote manifest provides `size` as an integer and `sha256` as a string. **Break:** If the remote source returns strings for size or uses a different hash (e.g., SHA-1), `_record_changed` will raise a `TypeError` or fail to detect changes.
+*   **Assumption:** The file system is static during the `scan()` operation. **Break:** If a file is deleted or permissions change between `rglob` and `stat`, the program will crash with a `FileNotFoundError`.
+*   **Assumption:** The `root` directory contains only relevant data. **Break:** If the root contains large, unrelated directories, `scan()` becomes an O(n) bottleneck that may time out or hit OS file descriptor limits.
+
+5. The 3 highest-leverage issues only, each as: [severity high/med/low] the problem — a concrete fix.
+*   [severity high] **Off-by-one error in `_page_bounds`**: The logic `if end == total and total % page_size == 0: end -= 1` actually excludes the last item if the total is a perfect multiple of the batch size (e.g., 100 items, batch 100 results in range 0-99). **Fix:** Remove the `if/else` block and keep `end = min(start + page_size, total)`.
+*   [severity high] **Blocking sequential scan**: The current `scan()` method hashes every single file before any comparison happens. For large datasets, this is extremely slow. **Fix:** Implement a generator-based approach or at least allow for concurrent hashing of files to utilize multiple CPU cores.
+*   [severity med] **Lack of error handling in `scan`**: A single inaccessible file will crash the entire sync process. **Fix:** Wrap the loop body in `scan()` with a `try/except` block to log errors and continue processing remaining files.
+
+6. Verdict: is this genuinely better than leaving it as is?
+Yes, because the current pagination logic contains a bug that would cause the final file in any perfectly-sized batch to be skipped during upload, leading to inconsistent sync states.

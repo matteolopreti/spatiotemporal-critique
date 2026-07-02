@@ -1,0 +1,47 @@
+[severity high] “ships today” is date-dependent and becomes wrong after release day — replace with the exact release date.
+
+[severity high] “for all workspace tiers” conflicts with later “Self-hosted customers can upgrade” unless self-hosted is included in “workspace tiers” — define availability precisely by Cloud/Self-hosted and tier.
+
+[severity high] “users only ever see documents they could already open” is an absolute security claim — soften or tie to tested permission model, e.g. “Search results apply the same document permissions used by open access.”
+
+[severity med] “under 300 ms at the 95th percentile on workspaces up to 100,000 documents” lacks test conditions — specify query mix, deployment shape, corpus size, indexing state, and whether this is server latency or end-to-end UI latency.
+
+[severity med] “standard benchmark corpus” is meaningless to readers — name or describe the benchmark.
+
+[severity med] “operators…work in any combination” is too broad and likely false for edge cases — document supported combinations and precedence, especially phrase + exclusion + `from:name`.
+
+[severity med] `from:name` is ambiguous — clarify whether `name` is display name, username, email, ID, partial match, quoted name, or exact match.
+
+[severity med] “named reviewer” is unclear — say whether the reviewer is a specific user, role, group, or external collaborator.
+
+[severity med] “partial approvals are possible” needs correctness detail — explain what counts as an “untouched section” and how edits invalidate prior approval.
+
+[severity med] “Authors are notified in-app and by email” may be false if email notifications are disabled — qualify with notification settings.
+
+[severity med] “every review decision is recorded” is another absolute audit claim — specify retention, visibility, and whether deleted users/documents preserve decisions.
+
+[severity med] Activity view says “exportable as CSV” but does not say whether exports themselves are logged — add that export actions include activity CSV exports, if true.
+
+[severity med] “Retention…180 days on all tiers” may conflict with compliance/customer retention settings — clarify whether retention is fixed, minimum, maximum, or configurable.
+
+[severity med] “ownership transfers…with the full edit history kept” omits what happens to comments, approvals, audit events, mentions, and external shares — specify the transferred objects and preserved metadata.
+
+[severity low] “roughly a third” is imprecise for release notes — provide a measured value or range.
+
+[severity low] “Cold-start load time” is vague — define cold start: first load after login, browser refresh, workspace switch, uncached session, or server cold start.
+
+[severity low] “moved sidebar hydration off the critical path” is implementation jargon — translate to user-visible impact unless this is developer-facing.
+
+[severity low] “network drops mid-save” is too narrow — clarify whether local retry covers browser close, tab refresh, auth expiry, and offline duration limits.
+
+[severity low] Fixed-items mix multiple unrelated bugs in one sentence — split into bullets for scannability and easier support referencing.
+
+[severity med] REST endpoints `/activity` and `/reviews` are underspecified — include API versioned paths, auth requirements, pagination, and availability for self-hosted.
+
+[severity med] “deprecates nothing” conflicts with “adds two read-only endpoints” only if endpoint stability/versioning differs — state whether these endpoints are GA, beta, or preview.
+
+[severity high] “upgrade in place from any 2.x version” is risky and overly broad — specify tested source versions or say “from supported 2.x versions.”
+
+[severity med] “requires no migration steps” may conflict with self-hosted upgrades needing backup and possibly database/schema changes — clarify “no manual migration steps” if migrations run automatically.
+
+VERDICT — don’t ship, because the notes contain overly broad absolute claims, underspecified compatibility promises, and date/performance/security language that can become incorrect or legally risky.

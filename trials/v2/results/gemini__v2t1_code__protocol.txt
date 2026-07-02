@@ -1,0 +1,14 @@
+1. PRESERVE
+* **Defensive parsing in `parse_remote_profiles`**: Safely handles malformed JSON and missing keys without crashing the sync process.
+* **Separation of concerns**: Clear boundaries between caching, parsing, merging logic, and I/O operations, making the code easy to unit test.
+
+2. ISSUES
+* [severity high] Broken cache TTL logic — `stored_at - time.time() < CACHE_TTL_SECONDS` is always true because `stored_at` is in the past, meaning cached entries never expire. 
+  * *Fix*: Change the condition to `time.time() - stored_at < CACHE_TTL_SECONDS`.
+* [severity high] Timezone mismatch in `is_within_grace` — stripping the timezone with `.replace(tzinfo=None)` and comparing it to `datetime.now()` (system local time) introduces offset errors if the host machine is not set to UTC.
+  * *Fix*: Import `timezone` from `datetime`, keep the parsed timezone, and compare against `datetime.now(timezone.utc)`.
+* [severity med] Shared reference mutation in `merge_profiles` — assigning `merged[user_id] = edit["profile"]` passes a mutable reference from the input `local_edits` dict. If the caller mutates `local_edits` later, or if nested fields are updated, it causes side effects.
+  * *Fix*: Use `copy.deepcopy(edit["profile"])` (or `dict(edit["profile"])` for shallow copy) when assigning and updating profiles.
+
+VERDICT
+Not good as-is. The cache never invalidates, and the timezone handling will cause silent sync errors (either prematurely expiring or indefinitely extending the grace window) on any server not configured to UTC.

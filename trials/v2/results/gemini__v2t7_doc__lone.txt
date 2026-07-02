@@ -1,0 +1,17 @@
+Here are the problems identified in the Meridian 2.4 release notes:
+
+*   **[severity high] misleading upgrade and migration instructions** — The text states that "Meridian 2.4 requires no migration steps" and that self-hosted customers can upgrade "from any 2.x version." While version 2.4 itself may not introduce new database migrations, upgrading from an older version (like 2.0 or 2.1) to 2.4 *will* execute the migrations cumulative to those intermediate versions. Telling admins there are "no migration steps" when jumping multiple minor versions is dangerous and can lead to unexpected downtime or failed deployments. 
+    *   *Concrete fix*: Revise to: "Upgrading from 2.3 to 2.4 requires no database migrations. Customers upgrading from 2.2 or earlier will automatically run the standard migrations for those intermediate versions during the in-place upgrade process."
+
+*   **[severity med] ambiguous search operator syntax** — The search syntax examples are presented in plain text with confusing punctuation: `("like this")` and `from:name`. It is unclear if the parentheses are part of the syntax, and `from:name` is problematic because names typically contain spaces (e.g., "Jane Doe"). 
+    *   *Concrete fix*: Use code formatting for literal search queries and clarify how multi-word names or usernames are handled. For example: "exact phrases (`"like this"`), exclusion (`-term`), and author filters (`from:"John Doe"` or `from:username`) work in any combination."
+
+*   **[severity low] confusing explanation of partial approvals** — The sentence "a returned draft keeps approvals for untouched sections" is logically confusing. If a section is "untouched" (unmodified), it shouldn't require a new approval anyway. 
+    *   *Concrete fix*: Clarify that the system preserves approvals for *previously approved* sections when a revised draft is submitted. For example: "...so partial approvals are possible: if a draft is returned, any sections that were already approved and remain unmodified do not need to be re-reviewed in the next revision."
+
+*   **[severity low] lack of context for REST API endpoints** — Describing the new endpoints simply as `/activity` and `/reviews` is imprecise for a REST API, as these are typically sub-resources or versioned paths, and it is unclear how they are scoped (e.g., per workspace, per document, or global).
+    *   *Concrete fix*: Specify the full relative paths and resource scoping, such as `/api/v1/workspaces/{id}/activity` and `/api/v1/documents/{id}/reviews`.
+
+***
+
+VERDICT — don't ship, because the claim that upgrading from "any 2.x version" requires "no migration steps" poses a high operational risk of database errors or unexpected downtime for self-hosted customers.

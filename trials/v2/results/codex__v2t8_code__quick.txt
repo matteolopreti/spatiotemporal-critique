@@ -1,0 +1,29 @@
+1. **What’s Working**
+The core fixed-window behavior is simple and mostly correct: per-key counters, deterministic `now` injection for tests, locking around shared state, clear reset semantics, and explicit single-process scope are all worth preserving.
+
+2. **Steelman**
+The current choices may already be right for tests, toy services, local CLIs, or single-instance apps where simplicity matters more than perfect production limiter semantics. Epoch-aligned windows are easy to reason about, and `remaining()` being side-effect-free avoids surprising mutation from read APIs.
+
+3. **Author’s Claim**
+This code claims: “For each key in one Python process, no more than `limit` successful `allow()` calls can occur during each aligned `window_seconds` interval.”
+
+4. **Assumptions**
+I’m assuming unbounded key cardinality is possible. If wrong, stale counter retention is not a real issue.
+
+I’m assuming this may run in a long-lived service. If wrong, wall-clock jumps and memory growth matter much less.
+
+I’m assuming `limit` is intended to be an integer request count. If wrong, accepting floats is acceptable, but the current docs and error message are misleading.
+
+I’m assuming wall-clock alignment is not externally required. If wrong, switching fully to monotonic time would break the advertised “aligned time windows” behavior.
+
+5. **Highest-Leverage Issues**
+[severity med] Uses `time.time()`, so wall-clock jumps can incorrectly extend or shorten rate windows — inject a clock or use `time.monotonic()` with a fixed origin unless epoch-aligned wall-clock windows are a hard requirement.
+
+[severity med] `_counters` never removes expired keys, so high-cardinality keys can grow memory without bound — prune stale entries opportunistically in `allow()` or provide an explicit cleanup method.
+
+[severity low] `limit` accepts non-integer values, causing surprising behavior such as `limit=1.5` effectively allowing 2 requests — validate `isinstance(limit, int)` and probably reject `bool`.
+
+Abstain: I can’t judge whether fixed-window burstiness at boundaries is a bug, because the work explicitly says this is a fixed-window limiter.
+
+6. **Verdict**
+Yes, for the stated single-process fixed-window goal this is better than leaving the problem unsolved. But I would not ship it into a long-lived or high-cardinality service without fixing clock behavior and stale-key cleanup.

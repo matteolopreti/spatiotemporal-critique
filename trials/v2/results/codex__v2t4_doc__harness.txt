@@ -1,0 +1,31 @@
+**PRESERVE**
+
+- Clear incident shape: date, affected API, customer-facing symptoms, duration, impact, root-cause area, and remediation are all present.
+- The postmortem separates timeline, root cause, impact, and action items, which is the right structure.
+- The action items point toward the right prevention themes: better saturation alerting, config audit, and load testing.
+
+**ISSUES**
+
+[severity high] The stated root cause happens after the incident begins — failures start at `13:40`, alerts fire at `13:55`, but the `AuthService` v2.1.0 deployment is at `14:30` and is said to have “caused the initial spike” — fix by either moving the deployment before symptom onset or changing the root cause to a condition that existed before `13:40`.
+
+[severity high] The duration is internally inconsistent — `13:40` to `15:30` is 110 minutes, not 90 — fix by correcting the duration or redefining the incident window with exact start/end criteria.
+
+[severity high] The “Triggering Event” label is applied to a mitigation step — rerouting traffic at `14:05` cannot be the trigger if customer failures began at `13:40` — fix by labeling it “Mitigation Attempt” and identifying the actual trigger separately.
+
+[severity med] The causal chain is under-specified — it is unclear how an `AuthService` update saturated database connections used by the Payment Gateway API — fix by adding the mechanism: which service owned the pool, which config changed, what values changed, and why that affected `/v1/charge`.
+
+[severity med] The mitigation narrative is incomplete — the load balancer reroute is mentioned but its effect is never stated — fix by adding whether it helped, failed, worsened saturation, or was rolled back.
+
+[severity med] The action item says rollback was completed, but the timeline says a “configuration fix” was deployed — fix by aligning the remediation language: rollback, forward fix, or both, with timestamps.
+
+[severity med] Detection came after customer reports, but no action item addresses that gap — fix by adding an alerting/SLO item for customer-visible checkout failure rate or latency before support tickets arrive.
+
+[severity low] “Queued indefinitely until they timed out” is imprecise — requests that time out are not indefinite — fix by stating the actual timeout behavior and thresholds.
+
+[severity low] Action items lack owners, due dates, and verification criteria — fix by adding owner, target date, and success metric for each item.
+
+[severity low] ABSTAIN: I cannot judge whether `15%`, `4,200 transactions`, or the regional impact claims are correct without logs, dashboards, or calculation notes — fix by adding the data source and denominator for each impact figure.
+
+**VERDICT**
+
+This is not ready as a correctness postmortem because the timeline and root-cause claim contradict each other. The smallest useful repair is to reconcile the incident window, deployment timing, and trigger/root-cause sequence first; everything else depends on that causal spine.

@@ -1,0 +1,52 @@
+{
+  "battery": "trial-v2 (2026-07-02)",
+  "note": "Artifact-scale battery: larger fixtures (300-1200 words / 70-110 lines), SUBTLER flaws, three authoring lineages (claude / codex / gemini API / gemma), clean decoys. Every planted-flaw line verified present verbatim before the run; author answer keys committed as *.key.txt for auditability. A seat is never scored on artifacts its own model authored. Grading: anchor + fault-word windows (flaw crit list + PROBE_CRITICAL); findings counted by counter v2 (markers, else ISSUES-block list items).",
+  "artifacts": [
+    {
+      "file": "v2t1_code.py", "author": "claude", "decoy": false, "kind": "code",
+      "flaws": [
+        {"label": "cache expiry arithmetic inverted (never expires)", "anchors": ["stored_at", "cache", "ttl", "expir"], "crit": ["never expires", "inverted", "backwards", "always", "negative", "reversed", "wrong way", "never invalidat", "stale forever", "never expire"]},
+        {"label": "parse failure returns [] then push overwrites remote", "anchors": ["parse", "empty", "push", "overwrit", "return []"], "crit": ["wipe", "data loss", "lose", "overwrit", "destroy", "clobber", "erase", "silently", "empty list"]},
+        {"label": "naive local now() vs aware UTC timestamp in grace check", "anchors": ["tzinfo", "now()", "grace", "timezone", "utc"], "crit": ["naive", "aware", "local time", "utc", "offset", "timezone", "skew", "mismatch"]}
+      ]
+    },
+    {
+      "file": "v2t2_code.py", "author": "codex", "decoy": false, "kind": "code",
+      "flaws": [
+        {"label": "file handle leaked on empty-file early return", "anchors": ["empty_sha256", "close", "handle", "open", "leak", "early return"], "crit": ["leak", "not closed", "never closed", "unclosed", "without closing", "early return", "resource"]},
+        {"label": "pagination end -= 1 drops last item on exact multiple", "anchors": ["end", "pagination", "page_size", "boundary", "last"], "crit": ["off-by-one", "off by one", "drops", "skips", "excludes", "misses", "exact multiple", "final item", "last item", "last element"]}
+      ]
+    },
+    {
+      "file": "v2t3_doc.md", "author": "gemini", "decoy": false, "kind": "doc",
+      "flaws": [
+        {"label": "99.9% SLO paired with the 99.99% downtime budget (4.32 min)", "anchors": ["99.9", "4.32", "downtime", "availability"], "crit": ["43.2", "99.99", "does not match", "doesn't match", "mismatch", "actually", "should be", "miscalculat"]},
+        {"label": "30-day purge vs supported 90-day queries", "anchors": ["retention", "90", "30 days", "purge", "cold storage"], "crit": []},
+        {"label": "throughput unit slip: 50k x 2KB stated as 100 GB/s (1000x)", "anchors": ["100 gb", "50,000", "2 kb", "throughput", "capacity"], "crit": ["100 mb", "1000x", "1,000x", "three orders", "megabyte", "overestimat", "off by", "should be"]}
+      ]
+    },
+    {
+      "file": "v2t4_doc.md", "author": "gemma", "decoy": false, "kind": "doc",
+      "flaws": [
+        {"label": "trigger at 14:05 but impact began 13:40", "anchors": ["14:05", "13:40", "timeline", "trigger"], "crit": ["after", "before", "precede", "order", "earlier", "later"]},
+        {"label": "root cause blames 14:30 deploy for errors that began 13:40", "anchors": ["14:30", "root cause", "deploy", "v2.1.0"], "crit": ["began before", "already", "cannot have caused", "predates", "started before", "cannot be", "couldn't have", "could not have"]}
+      ]
+    },
+    {
+      "file": "v2t5_spec.md", "author": "codex", "decoy": false, "kind": "spec",
+      "flaws": [
+        {"label": "phase B requires phase D which requires phase B", "anchors": ["phase b", "phase d", "schema", "before"], "crit": []},
+        {"label": "claimed-idempotent migration appends rows every run", "anchors": ["idempoten", "append", "duplicate", "re-run"], "crit": ["duplicat", "not idempotent", "double", "every run", "re-running"]}
+      ]
+    },
+    {
+      "file": "v2t6_code.py", "author": "gemini", "decoy": false, "kind": "code",
+      "flaws": [
+        {"label": "lock not released on the KeyError path", "anchors": ["lock", "keyerror", "release", "acquir"], "crit": ["deadlock", "not released", "never released", "held", "leak", "without releasing", "stuck", "release"]},
+        {"label": "integer division silently drops the final partial batch", "anchors": ["batch", "num_batches", "integer division", "//"], "crit": ["partial", "drops", "final batch", "remainder", "floor", "silently", "last batch", "ceil", "left over", "leftover"]}
+      ]
+    },
+    {"file": "v2t7_doc.md", "author": "claude", "decoy": true, "kind": "doc", "flaws": []},
+    {"file": "v2t8_code.py", "author": "claude", "decoy": true, "kind": "code", "flaws": []}
+  ]
+}

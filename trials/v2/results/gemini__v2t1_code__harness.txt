@@ -1,0 +1,82 @@
+### PRESERVE
+The following structural and logical elements are sound and should be retained:
+* **Decoupled Merge Logic**: The separation of the merge logic (`merge_profiles`) from the I/O operations (`sync`) allows for isolated unit testing of the conflict resolution rules.
+* **Grace-Period Strategy**: Using an explicit grace window to resolve conflicts between local edits and remote state is a pragmatic way to handle distributed state without full vector clocks.
+* **Defensive Parsing**: Checking for the existence of `"id"` in `parse_remote_profiles` prevents malformed remote profiles from corrupting the local merge pipeline.
+
+---
+
+### ISSUES
+
+#### [High] Inverted Cache Expiration Logic
+* **Problem**: In `_cache_get`, the expiration check is written as `stored_at - time.time() < CACHE_TTL_SECONDS`. Because `time.time()` monotonically increases, `stored_at - time.time()` will always yield a negative number (or zero). A negative number is always less than `CACHE_TTL_SECONDS` (300), meaning the cache **never expires**, leading to stale remote data being used indefinitely.
+* **Concrete Fix**:
+  ```python
+  def _cache_get(user_id):
+      entry = _profile_cache.get(user_id)
+      if entry is None:
+          return None
+      stored_at, profile = entry
+      if time.time() - stored_at < CACHE_TTL_SECONDS:
+          return profile
+      del _profile_cache[user_id]
+      return None
+  ```
+
+#### [High] Host-Dependent Timezone Comparison (Silent Drift)
+* **Problem**: `is_within_grace` strips the timezone offset from the ISO-8601 string (`.replace(tzinfo=None)`) and compares it against `datetime.now()`, which returns the host system's local naive time. If the host system is not set to UTC, this comparison shifts the grace window by the system's UTC offset. For example, on a system set to UTC+10, an edit made 40 hours ago in UTC will be calculated as 50 hours old, causing it to silently fall outside the 48-hour grace window.
+* **Concrete Fix**: Use timezone-aware datetimes throughout the comparison to guarantee host-independent correctness:
+  ```python
+  from datetime import datetime, timedelta, timezone
+
+  def is_within_grace(local_edit_ts, grace_hours=48):
+      """True if a local edit is recent enough to win a merge conflict."""
+      edited = datetime.fromisoformat(local_edit_ts)
+      if edited.tzinfo is None:
+          edited = edited.replace(tzinfo=timezone.utc)
+      now = datetime.now(timezone.utc)
+      return now - edited < timedelta(hours=grace_hours)
+  ```
+
+#### [Medium] Zombie Record Re-creation (Architectural Drift)
+* **Problem**: In `merge_profiles`, if a `user_id` present in `local_edits` is missing from `remote`, it is unconditionally added to the merged list:
+  ```python
+  if user_id not in merged:
+      merged[user_id] = edit["profile"]
+      continue
+  ```
+  If a profile is intentionally deleted on the remote directory, the next sync cycle will treat the local edit as a "new" user and push it back to the remote, making deletions impossible to propagate (zombie records).
+* **Concrete Fix**: Introduce a deletion marker or explicitly check if the local edit represents a creation vs. a modification of an existing remote record. If `local_edits` only tracks modifications, do not upsert missing remote records unless they are explicitly marked as new registrations.
+
+#### [Medium] Uncaught `TypeError` during Payload Parsing
+* **Problem**: `parse_remote_profiles` only catches `ValueError` and `KeyError`. If `client.fetch_directory()` returns `None` or a non-string/non-bytes object (e.g., due to a transport failure or client library quirk), `json.loads(payload)` will raise a `TypeError`, crashing the entire sync cycle.
+* **Concrete Fix**:
+  ```python
+  def parse_remote_profiles(payload):
+      """Parse the directory service response into a list of profile dicts."""
+      if not payload:
+          return []
+      try:
+          body = json.loads(payload)
+          return [p for p in body.get("profiles", []) if p.get("id")]
+      except (ValueError, KeyError, TypeError) as exc:
+          print(f"profile parse warning: {exc}")
+          return []
+  ```
+
+#### [Low] Shallow Copy Mutation Risk
+* **Problem**: `merge_profiles` performs a shallow copy of the remote profiles (`dict(p)`) and then updates them with `edit["profile"]`. If the profile contains nested structures (e.g., nested dictionaries or lists), updates will mutate shared references or overwrite nested keys entirely rather than merging them.
+* **Concrete Fix**: If the profile schema contains nested structures, use `copy.deepcopy` or implement a recursive dict-merge helper.
+
+#### [Abstention] Client-Side Resiliency and Concurrency
+* **We abstain from certifying**:
+  1. The thread-safety of the global `_profile_cache` if `sync` is called concurrently.
+  2. The network-level error handling, retries, or timeout behaviors of the passed-in `client` object, as its implementation is out of scope.
+
+---
+
+### VERDICT
+
+The code has critical logical and temporal defects that will cause it to fail in production environments. Specifically, the **inverted cache expiration** means remote updates are ignored after the first fetch, and the **timezone-naive comparison** makes conflict resolution behavior dependent on the host machine's local clock configuration. 
+
+This review does not constitute a green light. Address the High and Medium severity issues before deploying this synchronization logic.

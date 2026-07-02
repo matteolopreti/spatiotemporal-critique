@@ -1,0 +1,10 @@
+[severity high] **Memory Leak**: The `_counters` dictionary grows indefinitely because entries are never removed after their window expires. In a production environment with many unique keys (e.g., IP addresses), this will eventually cause an Out of Memory (OOM) crash.
+— Replace the standard dictionary with a TTL-aware cache (like `cachetools.TTLCache`) or implement a periodic cleanup task that removes keys where `start < current_window`.
+
+[severity med] **Lock Contention**: Using a single `threading.Lock()` for the entire `RateWindow` instance creates a bottleneck. Every request, regardless of the key, must wait for the same lock, which will severely limit throughput on multi-core systems.
+— Implement "Striped Locking" by creating a list of locks and assigning keys to them using `hash(key) % len(locks)`.
+
+[severity low] **Lack of Input Validation**: The `now` parameter in `allow` and `remaining` is not validated as a numeric type, which could lead to confusing `TypeError` messages deep in the logic if passed an incompatible object.
+— Add a simple check: `if now is not None and not isinstance(now, (int, float)): raise TypeError("now must be a number")`.
+
+VERDICT — don't ship. The memory leak makes this unsuitable for production use as it will crash the service under sustained load with unique keys.

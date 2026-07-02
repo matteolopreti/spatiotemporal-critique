@@ -1,0 +1,83 @@
+Here is the review of the Incident Postmortem document, conducted according to the specified procedure.
+
+---
+
+### 1. Preserve-list
+The following elements are highly effective and must be preserved in any revision:
+*   **Structure:** The use of standard postmortem sections (Summary, Timeline, Root Cause, Impact, Action Items) is professional and matches industry best practices.
+*   **Impact Quantification:** The specific metrics used (15% of transactions, ~4,200 failed transactions, specific geographic regions) provide excellent, concrete context.
+*   **Action Item Categorization:** Grouping tasks by time horizon (Immediate, Short, Medium, Long-term) is an excellent way to organize remediation efforts.
+
+---
+
+### 2. Steelman of Current Choices
+*   **Choice: Placing the `AuthService` deployment at 14:30 UTC in the timeline.**
+    *   *Steelman:* The author may have recorded 14:30 UTC because that was when the deployment pipeline *fully completed* across all regions, even though a rolling deployment began much earlier (prior to 13:40 UTC) and started causing failures immediately. 
+    *   *Verdict:* **Critique survives.** Even if this was the case, labeling a 14:30 completion as the "primary driver" that "caused the *initial* spike" at 13:40 without explaining the rolling deployment mechanism makes the document logically incoherent to readers.
+*   **Choice: Labeling the 14:05 UTC load balancer change as the "(Triggering Event)".**
+    *   *Steelman:* The author might view this manual intervention as the event that "triggered" the escalation of the incident from a minor latency issue into a severe, widespread outage.
+    *   *Verdict:* **Critique survives.** Chronologically, an event at 14:05 cannot trigger an incident that began at 13:40. In standard postmortem nomenclature, the "Triggering Event" must precede or directly coincide with the start of the degradation.
+
+---
+
+### 3. Author's Goal Stress Test
+*   **The Author's Actual Goal:** To produce a logically sound, accurate, and blameless postmortem that clearly explains the sequence of events, identifies the true root cause, and outlines actionable steps to prevent recurrence.
+*   **Alternative (Wrong-but-Plausible) Goal:** To quickly fill out a compliance template using realistic-sounding SRE jargon, where chronological precision is secondary to simply having a completed document on file.
+*   **Stress Test:** If the alternative goal were acceptable, the logical contradictions in the timeline wouldn't matter. However, in practice, a postmortem with a broken timeline is dangerous: it prevents engineers from accurately mapping telemetry to system changes, leads to incorrect assumptions about system behavior, and damages trust with external stakeholders who read the report. Chronological consistency is a non-negotiable requirement for correctness.
+
+---
+
+### 4. Key Assumptions
+*   **Assumption 1:** The `AuthService` v2.1.0 deployment is indeed the root cause.
+    *   *What breaks if wrong:* If the deployment was not the cause, then the "Immediate" action item (rolling back `AuthService`) was a red herring, and the true underlying database/network issue remains unresolved.
+*   **Assumption 2:** The times recorded are in the same time zone (UTC).
+    *   *What breaks if wrong:* If different systems logged events in different time zones (e.g., local time vs. UTC), the timeline is artificially scrambled, making the entire sequence of events invalid.
+
+---
+
+### 5. Multi-Angle Review
+
+#### Angle 1: The Domain Expert (SRE / Systems Engineer)
+*   The timeline is technically impossible. If the incident started at 13:40, a deployment completing at 14:30 cannot be the root cause of the initial 13:40 failures. 
+*   If traffic was rerouted to a secondary cluster at 14:05, why did the outage persist? Did the secondary cluster share the same misconfigured database connection pool? This is a major gap in the technical narrative.
+
+#### Angle 2: The Skeptical Generalist (Product Manager / Business Analyst)
+*   The narrative is confusing. The document states that the "Immediate" action item was to roll back the configuration, but the timeline says a "Configuration fix" was deployed at 15:10. Were these the same thing? 
+*   The timeline lists a "Triggering Event" *after* customers had already been reporting errors for 25 minutes. This makes it look like the engineering team does not understand their own systems.
+
+#### Angle 3: The End User (Merchant / Support Lead)
+*   The impact section is clear and helps us communicate with our customers. However, because the timeline is so confusing, it is hard to trust that the "Long-term" action items (like automated load testing) are actually targeting the right system components.
+
+#### Merge & Contested Points
+*   *Consensus:* All three perspectives agree that the timeline's chronological contradictions severely undermine the document's credibility.
+*   *Contested:* The SRE wants more technical detail about why the secondary cluster failover at 14:05 didn't resolve the issue, whereas the Generalist prefers to keep the document high-level and simple. (We resolve this by recommending a brief, one-sentence clarification regarding the secondary cluster).
+
+---
+
+### 6. Highest-Leverage Issues
+
+#### [Severity: High] Chronological Contradiction in Root Cause vs. Timeline
+*   **The Problem:** The timeline states the incident began at 13:40 UTC, but attributes the root cause to a deployment completed at 14:30 UTC. Furthermore, it labels a 14:05 UTC event as the "(Triggering Event)".
+*   **Concrete Fix:** Adjust the timeline to reflect logical causality. 
+    *   Move the start of the `AuthService` deployment to *before* the incident start (e.g., "13:30 UTC - Deployment of `AuthService` v2.1.0 begins").
+    *   Remove the "(Triggering Event)" label from the 14:05 UTC entry, or move it to the 13:30 UTC deployment entry.
+
+#### [Severity: Medium] Ambiguity of the 14:05 UTC Traffic Reroute
+*   **The Problem:** The SRE team rerouted traffic to a secondary cluster at 14:05 UTC, yet the incident continued for another 85 minutes. This implies the secondary cluster was either misconfigured as well, or the database connection pool bottleneck was shared.
+*   **Concrete Fix:** Add a brief explanatory note to the 14:05 UTC timeline entry or the Root Cause section (e.g., *"Note: Rerouting traffic did not alleviate the issue as both clusters shared the same downstream database instance"*).
+
+#### [Severity: Medium] Discrepancy Between "Rollback" and "Configuration Fix"
+*   **The Problem:** The "Immediate" Action Item says "Roll back the AuthService configuration," but the 15:10 UTC timeline entry says "Configuration fix is deployed." It is unclear if they rolled back to v2.0.0 or hotfixed v2.1.0.
+*   **Concrete Fix:** Align the terminology. Change the 15:10 UTC timeline entry to: *"15:10 UTC - Configuration rollback to v2.0.0 is deployed to production."*
+
+---
+
+### 7. Backward Check
+*(Skipped — no previous draft history provided).*
+
+---
+
+### 8. Verdict
+This document is **not ready** as-is. It contains critical chronological errors that invalidate its utility as an official incident postmortem. 
+
+**Smaller Change Option:** The most efficient way to capture 95% of the gain is to update the timestamps and labels in the **Timeline** section to make them logically consistent with the **Root Cause** and **Action Items** sections, without rewriting the entire narrative.

@@ -1,0 +1,16 @@
+**PRESERVE**
+- **Thread-Safe Registry:** The use of a `threading.Lock` to protect the `_jobs` dictionary ensures that concurrent registrations and cancellations do not cause internal state corruption.
+- **Daemon Execution:** Setting `daemon=True` on the worker thread correctly ensures the background process does not hang the interpreter on exit.
+- **State Management:** The lifecycle of a job (PENDING $\rightarrow$ RUNNING $\rightarrow$ COMPLETED/FAILED) is logically sound and prevents the same job from being executed multiple times simultaneously.
+- **Cancellation Safety:** The `cancel_job` method correctly identifies that a "RUNNING" job cannot be safely cancelled, preventing state corruption during execution.
+
+**ISSUES**
+- [severity high] **Batch processing ignores remainders.** In `submit_batches`, the calculation `num_batches = len(jobs) // batch_size` uses floor division. If there are 10 jobs and a batch size of 3, only 9 jobs (3 batches of 3) will be submitted; the 10th job is silently dropped.
+  - *Fix:* Use `range(0, len(jobs), batch_size)` to iterate over indices: `for i in range(0, len(jobs), batch_size): batch = jobs[i : i + batch_size]`.
+- [severity high] **Manual lock management is brittle.** In `cancel_job`, the use of `.acquire()` and `.release()` is not exception-safe. If an error occurs between these calls (e.g., during the `KeyError` raise or dictionary deletion), the lock will remain held, leading to a deadlock on subsequent access.
+  - *Fix:* Wrap the entire method body in a `with self._lock:` context manager.
+- [severity med] **Inefficient polling/O(n) worker loop.** The `_worker_loop` performs a linear scan of the entire dictionary (`for job in self._jobs.values()`) every 0.1 seconds. This will cause significant latency and CPU waste as the number of registered jobs grows.
+  - *Fix:* Use a `queue.Queue` to hold pending `job_ids`. The worker should block on `queue.get()` (eliminating the need for `time.sleep`), while the dictionary remains for status tracking and cancellation lookups.
+
+**VERDICT**
+The implementation is functionally incomplete due to a logic error in batch processing and contains a thread-safety risk regarding lock management. While the architectural approach of using a registry + worker thread is correct for supporting job cancellation, the current polling mechanism will not scale to high volumes of jobs.

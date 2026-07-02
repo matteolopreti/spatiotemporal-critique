@@ -1,0 +1,35 @@
+[severity high] Throughput math is wrong — `50,000 events/sec * 2 KB = 100 MB/sec`, not `100 GB/sec`. Recalculate all Kafka, network, storage, and OpenSearch sizing from the corrected baseline.
+
+[severity high] Regional resilience goal is not met — Kafka is only multi-AZ in the primary cloud region, so a primary-region outage breaks global ingestion. Use regional ingestion buffers with replication, or active-active multi-region Kafka/streaming.
+
+[severity high] Availability budget is wrong — `99.9%` over 30 days allows about `43.2 minutes` downtime, not `4.32 minutes`. Fix the number or raise the SLO to `99.99%`.
+
+[severity high] Retention requirements contradict each other — storage says cold logs are queryable up to `90 days`, but S3 purges objects `30 days after ingestion`. Pick one retention policy and make OpenSearch/S3/Athena lifecycle match it.
+
+[severity high] “No drops/backpressure” is not a valid guarantee — finite Vector disk buffers and 24h Kafka retention cannot survive arbitrarily long outages or downstream failure. Define buffer capacities, degradation behavior, alert thresholds, and explicit loss/eviction policy.
+
+[severity high] End-to-end durability semantics are underspecified — TLS to the buffering layer and local file buffers do not prove a log is durable in Kafka. Require producer acknowledgements, `acks=all`, replication factor, `min.insync.replicas`, retry/idempotency behavior, and clarify when Vector may delete local buffered data.
+
+[severity med] SLO latency is inconsistent with the stated goal — goals say under 3 seconds from emission to index, but the SLO starts “from reaching the ingestion gateway.” Measure from log emission or explicitly exclude collection/network delay.
+
+[severity med] Kafka partition count is unjustified and likely derived from bad math — 15 partitions may be fine for 100 MB/s depending on brokers and message size, but impossible for the stated 100 GB/s. Recompute based on broker count, per-partition throughput, replication, compression, retention, and consumer parallelism.
+
+[severity med] OpenSearch sizing is unsupported — 12 nodes with 1.5 TB each is asserted without daily ingest volume, compression/index expansion factor, replica count, shard sizing, hot/warm split, or retention math. Add a sizing table with raw/day, indexed/day, replicas, headroom, and shard plan.
+
+[severity med] Global collection to a core-region consumer creates latency and outage risk — cross-region forwarding can violate 3-second availability during network degradation. Put ingestion, buffering, and first-stage processing regionally, then replicate/aggregate.
+
+[severity med] DLQ handling is operationally incomplete — “manual inspection” for malformed payloads will not scale at 50k events/sec. Define DLQ retention, alerting, replay tooling, sampling, ownership, and automatic classification.
+
+[severity med] Schema enforcement may cause data loss — dropping malformed payloads to DLQ can make logs unavailable during incidents exactly when malformed logs spike. Preserve raw payloads and index minimally parsed fallback records.
+
+[severity med] Kubernetes metadata enrichment in the central consumer is fragile — pods may be gone by processing time and central consumers may not have reliable API access to every cluster. Enrich at the agent or snapshot metadata at collection time.
+
+[severity med] Cold storage path is missing — Athena requires data layout, partitioning, compression format, schema evolution, and catalog strategy. Specify S3 prefixes, Parquet/JSON choice, partition keys, Glue catalog, and compaction.
+
+[severity med] Security is incomplete — TLS is mentioned, but authn/authz, tenant isolation, encryption at rest, PII handling, audit logging, and access control for OpenSearch/S3/Athena are absent. Add concrete controls.
+
+[severity low] “Exactly 30 days after ingestion” is unrealistic for S3 lifecycle — lifecycle expiration is not exact to the second and may lag. Say “after 30 days” or define compliance-acceptable deletion bounds.
+
+[severity low] “Cost scales linearly with active usage” is overclaimed — OpenSearch shard overhead, replicas, warm storage, Athena scan costs, and Kafka retention do not scale perfectly linearly. Replace with a measurable cost model.
+
+VERDICT — don’t ship, because the design has hard correctness errors in throughput, SLO math, retention, and regional availability.

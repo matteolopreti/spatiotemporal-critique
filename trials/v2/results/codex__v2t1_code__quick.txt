@@ -1,0 +1,19 @@
+1. The preserved core: small, readable sync pipeline; parsing is isolated from merge logic; merge creates copies for remote profiles before applying local edits; conflict policy is explicit and testable.
+
+2. Steelman: the five-minute cache may be intentional to reduce directory-service load; local-new-profile insertion is reasonable for offline-created users; “local wins within 48h” is a defensible product rule when local edits are user-authored and remote data is eventually consistent.
+
+3. Consequential claim: `profile_sync` claims it can safely reconcile remote directory profiles with local edits, preserving recent local changes while pushing a merged profile set back without losing authoritative remote updates.
+
+4. Assumptions:
+- `client.push_profiles(merged)` replaces the full remote profile set. If wrong and it patches by id/field, stale-cache overwrite risk is lower.
+- `local_edits[user_id]["profile"]` is a delta of edited fields, not a full stale snapshot. If wrong, recent local edits can overwrite unrelated remote changes.
+- `edited_at` is always valid ISO-8601 UTC. If wrong, `sync` can crash during merge.
+- Runtime local timezone is UTC or irrelevant. If wrong, grace-window decisions can be off by the local UTC offset.
+- Remote payload always has dict profiles. If wrong, parsing can raise `AttributeError`, not return `[]`.
+
+5. Highest-leverage issues:
+- [high] Cache TTL check is reversed, so cache entries effectively never expire: `stored_at - time.time() < CACHE_TTL_SECONDS` is almost always true — fix to `time.time() - stored_at < CACHE_TTL_SECONDS`.
+- [high] Sync can push stale cached remote data back to the directory, potentially erasing remote changes made after the cache was filled — refetch before any full-list push, or make `push_profiles` a patch/compare-and-swap operation with remote version checks.
+- [med] Grace-window comparison strips timezone and uses local naive time — parse as aware UTC and compare with `datetime.now(timezone.utc)`; handle malformed timestamps explicitly.
+
+6. Verdict: no, not yet. The shape is good, but the cache-expiry bug and stale full-list push risk make this correctness-wise worse than leaving remote state untouched unless those are fixed.

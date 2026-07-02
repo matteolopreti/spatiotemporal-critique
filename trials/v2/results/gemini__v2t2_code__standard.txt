@@ -1,0 +1,257 @@
+Here is the structured review of the provided synchronization client code.
+
+---
+
+### 1. Preserve-list
+The following well-implemented aspects of the codebase must be preserved in any future refactoring:
+* **Decoupled Architecture:** The use of the `Transport` protocol keeps the sync logic highly testable and independent of any specific cloud provider or storage backend.
+* **Type Safety & Immutability:** The use of `frozen=True` dataclasses (`FileRecord`, `ChangeSet`) ensures metadata records remain immutable and safe to pass around.
+* **Cross-Platform Path Handling:** Converting paths using `path.relative_to(self.root).as_posix()` ensures that remote manifest keys consistently use forward slashes (`/`) regardless of whether the client runs on Windows, macOS, or Linux.
+* **Streaming Hashing:** Reading files in chunks (1 MB blocks) rather than loading entire files into memory prevents high memory consumption on large files.
+
+---
+
+### 2. Steelman of Current Choices
+* **Comparing only `size` and `sha256` (ignoring `mtime_ns` during diff):** While `mtime_ns` is scanned and stored in `FileRecord`, it is correctly ignored in `_record_changed`. Remote object stores (like AWS S3 or Azure Blob Storage) do not preserve local filesystem nanosecond modification times. Relying on file size and SHA-256 content hashes is the only robust way to detect changes across heterogeneous environments.
+* **Sorting `uploads` and `deletes` in `diff_remote_manifest`:** Sorting these lists ensures deterministic execution order and stable batching, which makes debugging, logging, and dry-runs predictable.
+
+---
+
+### 3. Author's Actual Goal
+The author's goal is to implement a **robust, batch-oriented, unidirectional file synchronization client** that detects local changes (additions, modifications, deletions) relative to a remote manifest and applies those changes in stable, size-bounded batches.
+
+* **Against a wrong-but-plausible alternative:** One might assume this is meant to be a real-time, bidirectional directory mirroring tool. This is incorrect because the client uses a pull-then-push batch model (`scan` $\rightarrow$ `diff` $\rightarrow$ `sync`) rather than an event-driven file watcher (e.g., `watchdog`), and it only pushes local state to the remote side (unidirectional).
+
+---
+
+### 4. Assumptions & Breakages
+* **Assumption 1:** The remote manifest returned by `fetch_manifest` uses relative paths as keys matching the exact format of `_relative(path)` (forward slashes).
+  * *If wrong:* The diffing logic will fail to match existing remote files, resulting in redundant uploads and incorrect deletion of remote files.
+* **Assumption 2:** The remote manifest dictionary contains the keys `"size"` and `"sha256"`.
+  * *If wrong:* The fallback values in `_record_changed` (`-1` and `""`) will trigger, causing the client to re-upload every single file on every sync run.
+* **Assumption 3:** No concurrent modifications or deletions occur on the local filesystem during the execution of `scan()`.
+  * *If wrong:* A file deleted or modified between the `stat()` call and the `_sha256_file()` call will cause the client to crash with a `FileNotFoundError` or produce an inconsistent `FileRecord`.
+
+---
+
+### 5. Multi-Angle Review
+
+#### Domain Expert (Cloud/Storage Systems Engineer)
+* The batching logic in `_page_bounds` contains a critical indexing bug that will drop files from synchronization when the total number of files is an exact multiple of the batch size.
+* Hashing files without a context manager (`with` statement) is dangerous; if a file read fails mid-way, the file descriptor is leaked.
+
+#### Skeptical Generalist (Python Software Engineer)
+* The `_page_bounds` generator is unnecessarily complex and prone to off-by-one errors. Standard Python idioms like `range(0, total, page_size)` should be used instead.
+* `_sha256_file` has redundant code to handle empty files. The standard `iter(lambda: handle.read(...), b"")` pattern naturally handles empty files correctly without needing a special branch or a global `EMPTY_SHA256` constant.
+
+#### End User (Application Developer)
+* The library is clean and easy to integrate. However, if any file permission error or concurrent deletion occurs during `scan()`, the entire sync run crashes. Some basic exception handling or warning logs during directory scanning would make it much more resilient.
+
+#### Consolidated Agreement/Disagreement
+* **Unanimous Agreement:** The indexing logic in `_page_bounds` is broken and must be replaced with a standard, clean Python implementation.
+* **Unanimous Agreement:** File handling in `_sha256_file` must use a context manager to guarantee resource cleanup.
+
+---
+
+### 6. Highest-Leverage Issues
+
+#### [Severity: High] Critical Off-by-One Bug in `_page_bounds`
+* **Problem:** When the total number of items to process is an exact multiple of `page_size`, the last item of the last batch is omitted. For example, if `total = 200` and `page_size = 100`, the bounds generated are `(0, 100)` and `(100, 199)`. The item at index `199` is completely skipped, leading to silent data-sync omission.
+* **Concrete Fix:** Replace the manual loop with a clean list comprehension using `range`:
+  ```python
+  def _page_bounds(self, total: int, page_size: int) -> list[tuple[int, int]]:
+      """Return half-open page bounds for a collection."""
+      return [(i, min(i + page_size, total)) for i in range(0, total, page_size)]
+  ```
+
+#### [Severity: Med] Resource Leak and Redundant Logic in `_sha256_file`
+* **Problem:** If an exception occurs while reading a file, the file handle is leaked because `handle.close()` is never reached. Additionally, the manual check for `first_block == b""` and the global `EMPTY_SHA256` constant are redundant because the standard chunk-iterator pattern handles empty files correctly.
+* **Concrete Fix:** Use a context manager and simplify the read loop:
+  ```python
+  def _sha256_file(self, path: Path) -> str:
+      """Hash a file using streaming reads."""
+      digest = hashlib.sha256()
+      with path.open("rb") as handle:
+          for block in iter(lambda: handle.read(1024 * 1024), b""):
+              digest.update(block)
+      return digest.hexdigest()
+  ```
+  *(Note: You can now safely delete the global `EMPTY_SHA256` constant).*
+
+---
+
+### 8. Verdict
+Implementing these changes is **genuinely better** than leaving the code as is. It resolves a silent data-loss bug in the batching logic and ensures robust system resource management. 
+
+Here is the corrected, production-ready version of the code:
+
+```python
+from __future__ import annotations
+
+import hashlib
+import os
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Iterable, Protocol
+
+
+@dataclass(frozen=True)
+class FileRecord:
+    """Local description of a file that can be compared with a remote manifest."""
+
+    path: str
+    size: int
+    mtime_ns: int
+    sha256: str
+
+
+@dataclass(frozen=True)
+class ChangeSet:
+    """Files that should be pushed to or removed from the remote side."""
+
+    uploads: list[FileRecord]
+    deletes: list[str]
+
+    def empty(self) -> bool:
+        """Return true when no remote work is needed."""
+        return not self.uploads and not self.deletes
+
+
+class Transport(Protocol):
+    """Minimal transport contract used by SyncClient."""
+
+    def fetch_manifest(self, bucket: str) -> dict[str, dict[str, Any]]:
+        """Return a remote manifest keyed by relative path."""
+        ...
+
+    def upload_many(self, bucket: str, files: list[tuple[str, Path]]) -> None:
+        """Upload a batch of local files to their relative remote paths."""
+        ...
+
+    def delete_many(self, bucket: str, paths: list[str]) -> None:
+        """Delete a batch of remote paths."""
+        ...
+
+
+class SyncClient:
+    """Small file-sync client for scanning, diffing, and uploading a directory tree."""
+
+    def __init__(
+        self,
+        root: str | os.PathLike[str],
+        bucket: str,
+        transport: Transport,
+        *,
+        batch_size: int = 100,
+    ) -> None:
+        """Create a client bound to a local root and a remote bucket."""
+        if batch_size < 1:
+            raise ValueError("batch_size must be positive")
+        self.root = Path(root).resolve()
+        self.bucket = bucket
+        self.transport = transport
+        self.batch_size = batch_size
+
+    def scan(self) -> dict[str, FileRecord]:
+        """Walk the root directory and return file metadata keyed by relative path."""
+        records: dict[str, FileRecord] = {}
+        for path in self.root.rglob("*"):
+            if not path.is_file() or self._is_ignored(path):
+                continue
+            rel = self._relative(path)
+            stat = path.stat()
+            records[rel] = FileRecord(
+                path=rel,
+                size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                sha256=self._sha256_file(path),
+            )
+        return records
+
+    def diff_remote_manifest(
+        self,
+        local: dict[str, FileRecord],
+        remote: dict[str, dict[str, Any]],
+    ) -> ChangeSet:
+        """Compare local records with a remote manifest and return required changes."""
+        uploads: list[FileRecord] = []
+        deletes: list[str] = []
+
+        for rel, record in local.items():
+            remote_record = remote.get(rel)
+            if remote_record is None:
+                uploads.append(record)
+                continue
+            if self._record_changed(record, remote_record):
+                uploads.append(record)
+
+        for rel in remote:
+            if rel not in local:
+                deletes.append(rel)
+
+        uploads.sort(key=lambda item: item.path)
+        deletes.sort()
+        return ChangeSet(uploads=uploads, deletes=deletes)
+
+    def sync(self) -> ChangeSet:
+        """Fetch the remote manifest, upload local changes, delete stale remote files."""
+        local = self.scan()
+        remote = self.transport.fetch_manifest(self.bucket)
+        changes = self.diff_remote_manifest(local, remote)
+        if changes.empty():
+            return changes
+
+        self.upload_changes(changes.uploads)
+        self.delete_remote(changes.deletes)
+        return changes
+
+    def upload_changes(self, uploads: Iterable[FileRecord]) -> None:
+        """Upload changed files in stable batches."""
+        files = [(record.path, self.root / record.path) for record in uploads]
+        for start, end in self._page_bounds(len(files), self.batch_size):
+            batch = files[start:end]
+            if batch:
+                self.transport.upload_many(self.bucket, batch)
+
+    def delete_remote(self, paths: Iterable[str]) -> None:
+        """Delete remote paths in stable batches."""
+        items = list(paths)
+        for start, end in self._page_bounds(len(items), self.batch_size):
+            batch = items[start:end]
+            if batch:
+                self.transport.delete_many(self.bucket, batch)
+
+    def _sha256_file(self, path: Path) -> str:
+        """Hash a file using streaming reads."""
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+        return digest.hexdigest()
+
+    def _record_changed(self, local: FileRecord, remote: dict[str, Any]) -> bool:
+        """Return true when local metadata differs from a remote manifest entry."""
+        return (
+            int(remote.get("size", -1)) != local.size
+            or str(remote.get("sha256", "")) != local.sha256
+        )
+
+    def _relative(self, path: Path) -> str:
+        """Convert an absolute local path to a normalized manifest path."""
+        return path.relative_to(self.root).as_posix()
+
+    def _is_ignored(self, path: Path) -> bool:
+        """Skip transient files that should not be synchronized."""
+        name = path.name
+        return name.endswith(".tmp") or name.startswith(".") or name == "sync.lock"
+
+    def _page_bounds(self, total: int, page_size: int) -> list[tuple[int, int]]:
+        """Return half-open page bounds for a collection."""
+        return [(i, min(i + page_size, total)) for i in range(0, total, page_size)]
+
+    def wait_until_quiet(self, seconds: float = 0.2) -> None:
+        """Wait briefly so editors can finish replacing files before a scan."""
+        if seconds > 0:
+            time.sleep(seconds)
+```

@@ -1,0 +1,31 @@
+### PRESERVE
+
+*   **Concrete Performance Metrics:** Retain the specific performance targets (`under 300 ms at the 95th percentile on workspaces up to 100,000 documents`) and benchmark context. This establishes measurable expectations and credibility.
+*   **Explicit Scope of Bug Fixes:** The "Performance and fixes" section clearly describes both the symptom and the root cause/fix (e.g., moving sidebar hydration off the critical path, local queuing for comments).
+*   **Reassuring Compatibility Section:** Keeping a dedicated compatibility and deprecation statement prevents upgrade anxiety for enterprise customers and API consumers.
+*   **Feature-Level Permissions Clarification:** Explicitly stating that search results respect document permissions proactively addresses a primary security concern.
+
+---
+
+### ISSUES
+
+*   **[Severity: High] Misleading "no migration steps" claim for self-hosted upgrades** — Stating "requires no migration steps" while simultaneously recommending a database backup is contradictory and dangerous. Self-hosted upgrades likely execute automated database schema migrations on startup. If an admin assumes "no migrations" means "no database changes," they may run the upgrade outside of a maintenance window or skip critical pre-migration checks.
+    *   *Concrete Fix:* Revise to: *"Meridian 2.4 requires no manual migration steps. Database schema updates will run automatically upon startup; as always, we recommend a full database backup before upgrading."*
+*   **[Severity: Medium] Unspecified authorization scopes for new API endpoints** — The notes introduce `/activity` and `/reviews` as read-only but do not specify their access controls. Because `/activity` contains sensitive audit logs (sign-ins, exports), exposing it without clarifying that it requires admin-level tokens is a security communication gap.
+    *   *Concrete Fix:* Revise to: *"the REST API adds two read-only endpoints: `/activity` (restricted to workspace administrators) and `/reviews` (respecting standard document access permissions)."*
+*   **[Severity: Medium] Ambiguity in "untouched sections" for partial approvals** — The phrase *"a returned draft keeps approvals for untouched sections"* implies a highly complex document state. It is unclear how the system defines "untouched" (e.g., character-level diffs, block-level IDs, or template fields) and whether editing a dependent section invalidates prior approvals.
+    *   *Concrete Fix:* Clarify the mechanism: *"Templates can mark distinct content blocks as review-required, so partial approvals are possible: a returned draft preserves approvals for unmodified template blocks, requiring re-review only for edited blocks."*
+*   **[Severity: Low] Undefined fallback for seat reassignment** — The text states *"ownership transfers to a nominated successor"* but does not clarify if nominating a successor is mandatory or what happens if one is not selected during deprovisioning.
+    *   *Concrete Fix:* Revise to: *"Seats can now be reassigned without deleting the departing user's documents; admins are prompted to transfer ownership to a nominated successor, preserving the full edit history."*
+
+#### Explicit Abstentions
+*   *Performance Claims:* I abstain from validating the `< 300 ms` p95 search latency and the `roughly a third` cold-start improvement, as I cannot execute benchmarks against the codebase.
+*   *Bug Fix Verification:* I abstain from verifying whether the spreadsheet paste styling, A4 PDF footnote cutoff, and double emoji rendering bugs are fully resolved by this release.
+
+---
+
+### VERDICT
+
+**SUBOPTIMAL (REVISIONS REQUIRED)**
+
+While the release notes are structurally sound, professional, and detailed, they contain a high-severity communication risk regarding database migrations for self-hosted customers and a medium-severity ambiguity regarding API security scopes. Implementing the concrete fixes above will prevent administrative failures and security misunderstandings during the rollout of version 2.4. The final decision to publish belongs to the human owner.

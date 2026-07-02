@@ -1,0 +1,85 @@
+Here is the review of the Meridian 2.4 release notes, conducted in accordance with the requested procedure.
+
+---
+
+### 1. Preserve-list
+The following elements are highly effective and must be preserved in any future edits:
+*   **Concrete, verifiable metrics:** Specifying "under 300 ms at the 95th percentile on workspaces up to 100,000 documents" builds high technical credibility.
+*   **Feature-to-benefit clarity:** The "Review workflows" section clearly explains the mechanics (side-by-side diff, paragraph anchoring, partial approvals) and the value.
+*   **Explicit upgrade safety details:** The "Compatibility" section proactively answers administrative questions regarding migrations, API deprecations, and self-hosted upgrade paths.
+*   **Actionable bug descriptions:** Instead of vague "bug fixes and stability improvements," the notes list specific, recognizable fixes (e.g., A4 paper footnote cutoff).
+
+---
+
+### 2. Steelman of Current Choices
+*   **Choice: Combining "Performance" and "Fixes" into one section.**
+    *   *Steelman:* Keeping minor bug fixes and performance improvements in a single, final section prevents the document from feeling cluttered or overly negative. It ensures the reader's primary focus remains on the high-value feature additions (Search, Reviews, Admin).
+*   **Choice: Stating "180 days retention on all tiers" without tier differentiation.**
+    *   *Steelman:* By offering 180 days of activity logs even on free/lower tiers, Meridian positions itself as highly generous and transparent. It avoids complex tier-comparison matrices in a simple release announcement.
+*   **Choice: Omitting visual aids (screenshots/GIFs) or links to documentation.**
+    *   *Steelman:* This keeps the release notes lightweight, fast-loading, and highly portable across different distribution channels (e.g., email newsletters, in-app changelogs, markdown files).
+
+---
+
+### 3. Author's Goal & Stress Test
+*   **The Goal:** To inform existing customers (users, admins, and developers) of the new capabilities in Meridian 2.4, reassure them of a seamless upgrade path, and drive immediate adoption of the new search and review features without generating support tickets.
+*   **Stress Test against alternative reading:** 
+    *   *Alternative reading:* The goal is to serve as a marketing/sales landing page to attract new enterprise leads. 
+    *   *Why the alternative fails:* If this were a sales document, it would lead with business ROI, security compliance certifications (SOC2/GDPR), and competitive differentiators. Instead, it focuses on granular technical details like "sidebar hydration off the critical path," exact query operators (`from:name`), and REST API endpoint paths (`/activity`).
+
+---
+
+### 4. Assumptions
+*   **Assumption 1:** Meridian is a collaborative document/knowledge management platform (similar to Notion or Confluence).
+    *   *If wrong:* If Meridian is an IDE, a database tool, or an ERP, terms like "document body text," "review workflows," and "editor" are misapplied, and the entire framing of the release notes is incorrect.
+*   **Assumption 2:** The new REST API endpoints (`/activity` and `/reviews`) use the same authentication and permission models as existing 2.x endpoints.
+    *   *If wrong:* Developers attempting to use these endpoints will experience immediate authorization failures, leading to an influx of developer support tickets.
+*   **Assumption 3:** Self-hosted customers have a standard upgrade process that matches the SaaS database schema.
+    *   *If wrong:* Self-hosted databases might fail during the in-place upgrade, causing downtime and critical data loss.
+
+---
+
+### 5. Multi-Angle Review & Contested Points
+
+*   **Domain Expert (Product Manager / Technical Writer):**
+    *   *Feedback:* The release notes are structurally sound and follow industry best practices. However, they lack call-to-action (CTA) links. Where do developers go to see the schema for `/activity`? Where is the user guide for setting up "review-required" templates?
+*   **Skeptical Generalist (IT Administrator / Buyer):**
+    *   *Feedback:* "180 days retention on all tiers" is a potential compliance red flag. Many enterprise compliance frameworks require 365 days or indefinite audit logs. If "all tiers" includes Enterprise, this is a regression or a limitation.
+*   **End User (Content Creator / Editor):**
+    *   *Feedback:* The "partial approvals" feature sounds incredibly useful but slightly complex. How do I know which sections of my draft are approved and which need work? A visual indicator explanation would be helpful.
+
+#### Merged & Contested Points:
+*   **Contested:** *The 180-day retention policy.* The IT Admin views "180 days on all tiers" as a potential compliance limitation for Enterprise accounts. The Product Manager likely views it as a generous baseline that simplifies database scaling. This remains contested; the text should clarify if Enterprise tiers can extend this limit.
+
+---
+
+### 6. Highest-Leverage Issues
+
+1.  **[Severity: Med] Missing Documentation Links**
+    *   *The problem:* The notes introduce complex new features (API endpoints, template-based review workflows) but provide no path for the reader to learn how to implement them, increasing friction and support load.
+    *   *Concrete fix:* Add a "Next Steps" or "Resources" section at the end, or embed inline links. 
+        *   *Example:* "Read our [API Reference] for `/activity` schemas, or visit the [Help Center] to learn how to configure review templates."
+
+2.  **[Severity: Low] Compliance Ambiguity on Retention**
+    *   *The problem:* "Retention for the activity view is 180 days on all tiers" may deter Enterprise buyers who require longer audit log retention for compliance.
+    *   *Concrete fix:* Clarify if custom retention is available.
+        *   *Example:* "Retention for the activity view is 180 days on standard tiers (contact support for custom enterprise retention policies)."
+
+3.  **[Severity: Low] Jarring Grammatical Transition in "Performance and fixes"**
+    *   *The problem:* The section transitions abruptly from active voice ("The editor no longer loses...") to a colon-led fragment list ("Fixed: table cells...").
+    *   *Concrete fix:* Rewrite the fixes to maintain a consistent, active flow.
+        *   *Example:* "We also resolved issues where table cells pasted from spreadsheets kept stray styling, emoji reactions occasionally rendered twice in the history panel, and PDF exports cut off footnotes on A4 paper."
+
+---
+
+### 7. Backward Check
+*(Skipped — No edit history provided).*
+
+---
+
+### 8. Verdict
+**Genuinely better than leaving it as is.** 
+
+While the original draft is excellent, implementing the fixes in Step 6 (specifically adding documentation links and smoothing the grammatical transition in the "Performance and fixes" section) will significantly reduce user friction and support tickets.
+
+*   **Smaller change that captures most of the gain:** Keep the text exactly as it is, but rewrite the "Performance and fixes" paragraph for grammatical consistency and append a single line at the very end: *"For detailed setup guides and API schemas, visit our [Documentation Center]."*

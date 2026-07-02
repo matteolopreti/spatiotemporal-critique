@@ -1,0 +1,17 @@
+**PRESERVE**
+*   The **Grace Window Logic**: The strategy of using a `timedelta` to determine "ownership" of an edit is a pragmatic way to handle eventual consistency without requiring complex version vectors or CRDTs for simple profile fields.
+*   **Merge Strategy**: Using `.update()` on the dictionary ensures that fields not present in the local edit are preserved from the remote source, preventing accidental data loss of unrelated fields during a partial update.
+
+**ISSUES**
+
+*   **[severity high] The "Empty List" Data Loss Trap — Ensure `parse_remote_profiles` raises an exception or returns a specific error state instead of an empty list.**
+    The current implementation of `parse_remote_profiles` catches errors and returns `[]`. Because the `sync` function proceeds to call `merge_profiles` with that empty list, it will treat the remote directory as *empty*. When `client.push_profiles(merged)` is called, it will overwrite the entire remote database with only the local edits. A network timeout or a malformed JSON response will result in a total wipe of remote data.
+*   **[severity high] Naive Datetime Comparison — Use `datetime.now(timezone.utc)` and ensure all comparisons are timezone-aware.**
+    The code performs `.replace(tzinfo=None)` on the input but compares it against `datetime.now()`. If the system running this code is set to a local timezone (e.g., EST), the comparison will be off by several hours, causing the "grace window" to behave unpredictably or fail entirely. Always compare UTC-aware objects: `datetime.now(timezone.utc)`.
+*   **[severity med] Thread-Safety of Global Cache — Wrap cache access in a `threading.Lock` or use a thread-safe storage.**
+    The `_profile_cache` is a global dictionary accessed/modified by `_cache_get` and `_cache_put`. In any multi-threaded environment (standard for most Python web/app servers), the "check then delete" logic in `_cache_get` is not atomic. This can lead to `KeyError` or stale data during concurrent sync attempts.
+*   **[severity low] Cache Key Collision — Use a unique key or a more specific identifier than `"__all__"`.**
+    While `"__all__"` works for now, it is a "magic string." If the system expands to support multiple directory types (e.g., `profiles`, `settings`), this will cause collisions.
+
+**VERDICT**
+The implementation contains a **critical safety flaw**: the error handling in the parser creates a "fail-open" state where a network error results in a total data wipe of the remote source. The logic is structurally sound for merging, but it must be made "fail-closed" (aborting on any parse/fetch error) before it can be considered production-ready.

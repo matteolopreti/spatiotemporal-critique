@@ -1,0 +1,21 @@
+1. **What's working here that must be preserved?**
+The technical specificity of the performance metrics (e.g., "300 ms at the 95th percentile on workspaces up to 100,000 documents") and the explicit mention of "no migration steps" for self-hosted users. These provide the concrete data points that enterprise buyers and sysadmins require to trust a platform's scalability and stability.
+
+2. **Steelman the current choices — where might they already be right?**
+The decision to focus on "Review workflows" and "Administration" rather than just new creative features is likely correct because, for large-scale deployments (the target of this release), the primary friction points are governance and permissioning. By prioritizing these, you are addressing the "boring" but essential requirements that allow a company to actually deploy the software at scale.
+
+3. **State what the author is actually trying to achieve, as a specific consequential claim.**
+The author is attempting to signal **enterprise-grade reliability** to minimize the perceived risk of upgrading from 2.x to 2.4. The consequential claim is that Meridian is transitioning from a "writing tool" to a "governed corporate infrastructure" by highlighting audit logs, permissioned search, and formal review cycles.
+
+4. **List the assumptions you're making where things are unspecified, and what breaks if each is wrong.**
+*   **Assumption:** The "Standard benchmark corpus" used for search testing mirrors actual client data types (e.g., heavy tables vs. plain text). *Break:* If it doesn't, search performance may degrade significantly in production environments with complex layouts.
+*   **Assumption:** "Side-by-side diff" handles all content types (images, embedded files, etc.) effectively. *Break:* If the diffing engine only highlights text changes, reviewers may miss critical deletions of non-textual elements.
+*   **Assumption:** 180 days of activity retention is sufficient for the target audience's compliance needs. *Break:* If a client requires 365+ days for legal/audit reasons, the "Administration" feature fails to meet their primary requirement.
+
+5. **The 3 highest-leverage issues only, each as: [severity high/med/low] the problem — a concrete fix.**
+*   [med] The Search section lacks a ranking methodology (e.g., relevance vs. recency). — Add one sentence clarifying how results are ordered (e.g., "Results are ranked by relevance to your query terms").
+*   [high] There is no mention of notification types for the Review workflow (other than in-app/email). — Specify if there is a "Review Requested" status badge or automated reminders for pending reviews.
+*   [low] The Admin section mentions activity but lacks an "Alerting" mechanism for high-risk events. — Add a note on whether admins can be notified of specific actions (like permission changes) in real-time.
+
+6. **Verdict: is this genuinely better than leaving it as is?**
+Yes. The current draft successfully balances technical depth with readability, but the additions suggested above—specifically regarding ranking and alerting—would transform these notes from a "feature list" into a "deployment assurance" document for enterprise stakeholders.

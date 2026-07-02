@@ -122,3 +122,19 @@ Together they **detect overfitting** (a polished artifact that shatters under mi
 ## Scale (threads through everything)
 
 Match the review to the decision's scale: small calls get **local, frequent, cheap** attention; direction-level calls get **global, rare, deep** review. **Blast-radius and time-scale are two readings of one axis** (a high-blast-radius decision governs a long stretch of downstream work), so the reversibility triage is also the scale control.
+
+---
+
+## The orchestrator contract — running the protocol from another model
+
+The protocol is host-agnostic: any capable model may execute it (the *harness* condition in [TRIAL.md](TRIAL.md) does exactly that — the whole spec as one seat's brief). A non-Claude orchestrator must honor, without exception:
+
+1. **The four mandates, at their layers** — preserve-first and steelman in its synthesis; discerning-solver and the net-improvement gate in its revisions.
+2. **Abstention over fabrication.** Where it cannot genuinely judge, it says `ABSTAIN: what — why`; an honest gap beats a filled page.
+3. **No green lights.** Its output is findings plus a verdict that never *certifies* — a reviewer can only raise problems or fail to raise them. Clearance, and the intent itself, stay with the human owner.
+4. **Agreement discipline.** Cross-lineage agreement is corroboration, never proof; same-lineage agreement is near-uninformative; findings are reported as a union, disagreement first.
+5. **Temporal honesty.** Backward bisection runs on a real trace (git by default) or is skipped and said so — never an invented history.
+6. **Synthesis ownership.** Unless the owner explicitly transfers the reducer role, synthesis stays with the owner-side model; an external orchestrator's own synthesis arrives as *one more input* to that reducer, not as the review.
+7. **The trust plumbing, when it drives the tools.** Seats it recruits must be probe-certified; paid calls stay spend-gated; runs stay pin-logged.
+
+*Standing empirical note:* the first harness measurements (TRIAL.md) found that giving one seat a fuller protocol brief did **not** improve it — the plain seat contract was the noise optimum. Any orchestrator deployment must re-run that comparison on the current battery before claiming to add value.

@@ -1,0 +1,22 @@
+1. **What's working here that must be preserved?**
+The use of the **Strangler Pattern** combined with **Shadow Mode** validation for Phase B and C is the correct architectural choice for financial systems. Specifically, the requirement that the monolith remains the System of Record (SoR) until full promotion ensures that "source of truth" integrity is never compromised during the transition. The inclusion of **Source IDs and Migration Batch IDs** in the data migration plan is also critical for auditability.
+
+2. **Steelman the current choices — where might they already be right?**
+The decision to split into four distinct services (Subscription, Invoice, Payment, Ledger) rather than one "Billing Service" is correct because these domains have different scaling and security requirements: Payments require high-security/PCI compliance, while Invoicing requires heavy calculation logic. Keeping the **Facade** inside the monolith boundary initially reduces network complexity during the early phases of extraction, allowing for a cleaner migration of internal logic before exposing new endpoints to the wider organization.
+
+3. **State what the author is actually trying to achieve, as a specific consequential claim.**
+The author is attempting to **decouple high-risk financial operations (Payments and Ledger) from a bloated monolith to enable independent scaling and deployment cycles, while mathematically guaranteeing zero-variance in financial records through a multi-stage "Shadow/Compare" validation framework.**
+
+4. **List the assumptions you're making where things are unspecified, and what breaks if each is wrong.**
+*   **Assumption:** The Monolith database can handle the IOPS of "Shadow" writes/reads during Phase B/C without degrading production performance. *Break:* Database contention causes latency spikes or timeouts for existing customers.
+*   **Assumption:** The Message Bus has sufficient throughput and ordering guarantees to handle the increased volume of events produced by new services. *Break:* Out-of-order ledger entries or delayed payment notifications.
+*   **Assumption:** "Finance-approved threshold" for variance is a stable, quantifiable metric. *Break:* Subjective approval processes lead to inconsistent data states across different accounting periods.
+*   **Assumption:** The Facade can handle stateful transaction routing (e.g., Payment) without creating race conditions between the monolith and new service stores. *Break:* Duplicate charges or "lost" payments during a split-brain scenario.
+
+5. **The 3 highest-leverage issues only, each as: [severity high/med/low] the problem — a concrete fix.**
+*   [High] **Distributed Transaction Integrity:** The plan lacks a mechanism for handling partial failures when writing to both the Monolith and the new Service during shadow phases (the "Dual Write" problem). *Fix: Implement an Outbox Pattern in the Facade to ensure that writes to the legacy database and the message bus are atomic.*
+*   [High] **Circular Dependency/Blocking:** Phase B is blocked by a schema produced in Phase D, but Phase D cannot be fully realized without Phase B's outputs. *Fix: Enforce a "Contract-First" approach where the Ledger Event Schema is defined and frozen as a versioned specification before Phase A begins.*
+*   [Med] **Stateful Rollback Ambiguity:** The plan for Phase C (Payment) rollback doesn't specify which system owns the state during the "reconciliation" of in-flight intents. *Fix: Define an explicit "Authority Flag" for every transaction; once a payment is initiated by the Payment Service, it remains the owner of that record regardless of whether the routing flag is toggled back.*
+
+6. **Verdict: is this genuinely better than leaving it as is?**
+Yes. The current monolith represents a systemic risk where a single regression in a non-critical feature (e.g., an export report) could potentially block a critical path (e.g., payment processing). This plan provides a rigorous, audit-safe methodology to decompose that risk.

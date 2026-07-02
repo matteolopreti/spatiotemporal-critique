@@ -1,0 +1,44 @@
+This review follows the requested procedure.
+
+### 1. Preserve-list
+The following elements are correct and must survive:
+*   **Thread Safety:** The use of `threading.Lock()` to protect the shared `_jobs` dictionary is essential and correctly implemented.
+*   **Daemon Threading:** Marking the worker as `daemon=True` ensures the program can exit even if the loop is running.
+*   **Error Isolation:** The `try...except` block inside the `_worker_loop` prevents a single failing job from crashing the entire scheduler thread.
+*   **State Management:** The transition of statuses (`PENDING` $\rightarrow$ `RUNNING` $\rightarrow$ `COMPLETED/FAILED`) is logically sound for an in-memory system.
+
+### 2. Steelman each current choice
+*   **Dictionary over Queue:** While a `Queue` is standard for workers, using a Dictionary allows for $O(1)$ lookups by `job_id`. This makes the `cancel_job` functionality possible; you cannot easily "cancel" an item in a standard FIFO queue without iterating.
+*   **Time Sleep (0.1s):** Necessary to prevent the worker thread from consuming 100% CPU while polling for work when the job list is empty.
+*   **Single Worker Loop:** Ensures that jobs are executed sequentially. This avoids complex race conditions on shared resources that might occur if multiple threads were executing tasks simultaneously without external synchronization.
+
+### 3. Author's Goal
+**Claim:** The author intends to provide a thread-safe, asynchronous job execution system where jobs can be submitted and canceled by unique identifier without blocking the main application flow.
+**Alternative Reading:** The author is attempting to build a high-throughput parallel processing engine. (This is incorrect; the current architecture is strictly sequential/single-worker).
+
+### 4. Assumptions
+*   **Assumption:** `job_id` is unique. *What breaks if wrong:* Submitting a job with an existing ID silently overwrites the previous job's configuration before it starts.
+*   **Assumption:** The work performed by `func` is thread-safe relative to other threads (but not necessarily the scheduler). *What breaks if wrong:* If `func` modifies the internal state of the `InMemoryScheduler`, it could cause a race condition because the lock is only held during job selection, not execution.
+*   **Assumption:** Memory is sufficient for all jobs. *What breaks if wrong:* A burst of 100,000 jobs will cause an `OutOfMemoryError` since there is no capacity limit or overflow behavior.
+
+### 5. Review from in-context angles
+*   **Domain Expert (Concurrency/Systems):** The `_worker_loop` is $O(n)$. It iterates over every job in the dictionary to find one that is "PENDING." As the number of jobs grows, this becomes increasingly expensive. A `queue.Queue` should be used for pending items to maintain $O(1)$ retrieval.
+*   **Skeptical Generalist:** The `submit_batches` method is misleading. It doesn't actually "batch" anything (like a bulk database insert); it just calls `submit_job` multiple times in a loop. This provides no performance benefit over calling `submit_job` manually.
+*   **End User:** There is no way to get the result of a job or a callback. Once a job is "COMPLETED," it is deleted from the registry, making it impossible for the user to retrieve the return value of `func`.
+
+### 6. Highest-leverage issues
+1.  **[Severity High] Efficiency of `_worker_loop`:** The current loop iterates over all jobs in the dictionary every 0.1 seconds. If there are 5,000 pending jobs, it checks 5,000 items repeatedly.
+    *   **Fix:** Introduce a `queue.Queue` specifically for "Pending" job IDs. The worker should block on `queue.get()`. Use the dictionary only for status lookups and storage.
+2.  **[Severity High] Cancellation Logic:** `cancel_job` returns `False` if a job is `RUNNING`. There is no way to stop a running thread in standard Python without complex signals or process-level isolation. 
+    *   **Fix:** While you cannot easily "kill" the thread, you should provide a mechanism for the job itself to check a "cancelled" flag (e.g., an `Event` object) so it can stop its own execution gracefully.
+3.  **[Severity Med] `submit_batches` implementation:** It currently offers no benefit over individual submissions.
+    *   **Fix:** Either remove the method or implement actual batching logic if the underlying storage (e.g., a database) supports it.
+
+### 7. Backward check
+*Skipped (No edit history provided).*
+
+### 8. Verdict
+The work is **not** significantly better than leaving it as is, because the $O(n)$ polling loop will cause significant performance degradation as the system scales.
+
+**Smaller change that captures most of the gain:**
+Replace the `for job in self._jobs.values()` loop with a `queue.Queue`. This converts the search from $O(n)$ to $O(1)$ and removes the need for `time.sleep(0.1)` because `queue.get()` blocks efficiently until work is available.

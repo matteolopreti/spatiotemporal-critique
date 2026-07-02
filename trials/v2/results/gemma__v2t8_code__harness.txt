@@ -1,0 +1,46 @@
+### 1. Origin: Intent & Spec Verification
+**Externalized Intent:**
+The implementation must provide a thread-safe, per-key request rate limiter using a **fixed-window** algorithm. It must ensure that for any unique key $K$, the number of successful `allow()` calls within any window $[W_n, W_{n+1})$ does not exceed `limit`.
+
+**Severe Tests (Boundary/Edge Cases):**
+*   **The "Exactly on Time" Test:** If a request arrives at $T = \text{window\_seconds}$, does it fall into the new window? (Correct: Yes, via floor division).
+*   **The "Concurrent Burst" Test:** Can two threads simultaneously increment the same key's counter without losing an update? (Correct: Yes, via `threading.Lock`).
+*   **The "High Cardinality" Test:** What happens if 1 million unique keys are requested once? (Failure: Memory grows indefinitely).
+
+**Assumptions Ledger:**
+*   **Assumption:** The user will not provide a `now` value that jumps backward in time (non-monotonic clock). *Consequence:* If the clock jumps back, the window calculation remains valid but the "current" window might overlap with a previous one.
+*   **Assumption:** Memory is sufficient for the number of unique keys expected. *Consequence:* High-cardinality keys will cause an OOM (Out of Memory) error as there is no eviction policy.
+
+---
+
+### 2. Spatial: Independent Critic Review
+
+**Critic 1: Concurrency & Thread Safety**
+*   The implementation correctly uses `threading.Lock()` to wrap all access to the shared `_counters` dictionary.
+*   Both `allow` and `remaining` are protected by the lock, preventing race conditions during read-modify-write cycles on a per-key basis.
+
+**Critic 2: Logic & Correctness (Fixed-Window)**
+*   The calculation `int(now // self.window_seconds) * self.window_seconds` is the standard way to implement fixed windows. It ensures that all requests within a discrete bucket are counted together.
+*   The logic for resetting the count when `start != window` correctly handles the transition between buckets.
+
+**Critic 3: Resource Management (Memory)**
+*   **Issue:** The `_counters` dictionary is an unbounded map. Because this is a "per-process" limiter, it will retain every unique key ever seen until `reset()` is called or the process restarts. For a service seeing many unique IDs (e.g., IP addresses), this is a memory leak.
+
+---
+
+### 3. Synthesis & Verdict
+
+**PRESERVE**
+*   Thread-safe implementation using `threading.Lock`.
+*   Deterministic testing support via the `now` parameter.
+*   Correct floor-division logic for fixed-window boundaries.
+*   Clean API for both specific key and global resets.
+
+**ISSUES**
+*   [severity high] **Memory Leak:** The `_counters` dictionary grows indefinitely with every unique key. In a production environment, this will eventually cause an OOM error. 
+    *   *Fix: Use a `collections.OrderedDict` to implement a basic LRU eviction or use a TTL-based cache (like `cachetools`) to automatically expire old keys.*
+*   [severity med] **Redundant State Assignment:** In `allow`, the logic `if start != window: start, count = window, 0` is correct but slightly inefficient as it performs an assignment that is immediately overwritten by the increment.
+    *   *Fix: Simplify to check if the current window has changed; if so, reset the counter before checking/incrementing.*
+
+**VERDICT**
+The implementation is **correct** regarding its primary functional requirements (fixed-window logic and thread safety). It is safe for low-cardinality keys or short-lived processes. However, it is **not production-ready** for high-cardinality keys due to the lack of a memory eviction strategy. The code succeeds in its "Correctness" mode but fails on "Robustness."

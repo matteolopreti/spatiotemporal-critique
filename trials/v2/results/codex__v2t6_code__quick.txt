@@ -1,0 +1,26 @@
+1. **What’s working that must be preserved?**  
+The core shape is simple and understandable: `Job` is a small work wrapper, scheduler state is centralized in `_jobs`, access is guarded by a lock, and worker execution happens outside the lock so long-running jobs do not block submission/cancellation. The `batch_size <= 0` validation is also correct.
+
+2. **Steelman the current choices**  
+Keeping this in memory may be right if the intended use is tests, local tooling, or best-effort background work where durability is explicitly out of scope. A single worker loop may also be right if sequential execution is desired to avoid task contention. Retaining failed jobs may be intentional if callers need to inspect failures later.
+
+3. **What the author is trying to achieve**  
+The consequential claim is: “This scheduler can safely accept in-memory jobs from multiple threads, execute each pending job at most once in the background, allow pending jobs to be cancelled, and batch-submit work without losing jobs or corrupting scheduler state.”
+
+4. **Assumptions and what breaks if wrong**  
+Assumption: job IDs are unique and never reused. If wrong, a running job can finish and delete a newer job with the same ID.  
+Assumption: `submit_batches` should submit only full batches. If wrong, remainder jobs are silently dropped.  
+Assumption: `start()` is called once. If wrong, multiple worker threads can run concurrently despite the sequential scheduler implication.  
+Assumption: failed jobs should remain in `_jobs`. If wrong, failed jobs leak memory and stay in the registry forever.  
+Assumption: `cancel_job()` raising on missing IDs is acceptable. If wrong, callers get exceptions instead of a simple `False`.
+
+5. **3 highest-leverage issues only**
+
+[severity high] `cancel_job()` leaks the lock when `job_id` is missing — use `with self._lock:` or `try/finally` so the lock is always released before raising.
+
+[severity high] duplicate `job_id` submission can corrupt execution state — reject duplicate IDs in `submit_job()` while the existing job is pending/running/failed, or generate scheduler-owned IDs.
+
+[severity med] `submit_batches()` drops remainder jobs when `len(jobs)` is not divisible by `batch_size` — iterate with `range(0, len(jobs), batch_size)` so every job is submitted.
+
+6. **Verdict**  
+Not yet genuinely better than leaving it as-is for correctness-sensitive use. The structure is salvageable, but the lock leak and duplicate-ID corruption are serious enough that this should not ship without fixes.

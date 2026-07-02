@@ -1,0 +1,11 @@
+1. PRESERVE
+- The core logic of the "grace window" for conflict resolution.
+- The use of `dict(p)` to ensure remote data is copied before mutation.
+- The error handling in `parse_remote_profiles` to prevent crashes on malformed JSON.
+
+2. ISSUES
+- [severity high] Timezone-naive comparison in `is_within_grace`: `datetime.now()` returns local system time, while the input string contains UTC offset information. Stripping the timezone with `.replace(tzinfo=None)` makes the comparison dependent on the server's local configuration. Fix: Use `datetime.now(timezone.utc)` and ensure the parsed date is converted to a UTC-aware object.
+- [severity high] Shallow merge in `merge_profiles`: The use of `.update()` performs a shallow merge. If a profile contains nested dictionaries (e.g., `settings: {theme: "dark"}`), the local edit will overwrite the entire nested dictionary rather than merging the keys. Fix: Implement a recursive deep-merge helper or enforce a flat schema for profiles.
+- [severity med] Memory leak in `_cache_get`: The cache only removes expired items when they are accessed. Items that are never requested again will persist in memory indefinitely. Fix: Use a TTL-aware cache implementation (like `cachetools.TTLCache`) or a periodic cleanup task.
+
+VERDICT — Not good as-is due to the timezone comparison bug, which will cause incorrect sync behavior if the server's local time differs from UTC.

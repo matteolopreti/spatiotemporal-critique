@@ -1,0 +1,31 @@
+1. **What’s working here that must be preserved?**
+
+The layered architecture is sound: Vector agents, durable buffering, scalable consumers, and separate hot/cold storage are the right major components for log ingestion. The doc also correctly separates operational search from archival analytics, and it defines concrete SLOs instead of vague “fast and reliable” goals.
+
+2. **Steelman the current choices — where might they already be right?**
+
+Kafka is a defensible buffer because replay, consumer-group scaling, and spike absorption are central to this workload. Vector daemonsets are a reasonable collector choice for Kubernetes logs. OpenSearch for 7-day troubleshooting plus S3/Athena for cheaper history is a common and sensible split. A single primary-region Kafka cluster may also be intentional if the real requirement is AZ resilience, not true multi-region survival.
+
+3. **What the author is actually trying to achieve**
+
+The author is trying to claim: “AetherLog can make logs from globally distributed Kubernetes workloads searchable within seconds, without data loss after durable acknowledgment, while keeping retention costs bounded through tiered storage.”
+
+4. **Assumptions and what breaks if wrong**
+
+- I assume “global Kubernetes clusters” means logs originate in multiple regions. If wrong, the regional HA critique is weaker.
+- I assume the 50,000 events/sec figure is the intended post-growth peak. If it is pre-growth, the capacity math still needs clarification.
+- I assume “2 KB” means approximately 2 kilobytes per event, uncompressed. If the real average is much larger, sizing changes materially.
+- I assume compliance requires 90-day queryability because the storage section says so. If not, the retention policy may be fine, but the doc contradicts itself.
+- I assume “under 3 seconds from emission to index” is the actual latency goal. If the SLO only starts at gateway receipt, collection/network latency is excluded and the goal is weaker than stated.
+
+5. **Three highest-leverage issues only**
+
+- **[severity high] Capacity math is off by roughly 1000x** — 50,000 events/sec × 2 KB/event is about **100 MB/sec**, not **100 GB/sec**. Recalculate Kafka partitions, broker count, EBS/NVMe throughput, OpenSearch node count, and daily volume from corrected units.
+
+- **[severity high] Retention requirements contradict each other** — the storage section says cold logs are queryable up to **90 days**, but S3 purges objects exactly **30 days** after ingestion. Pick the real compliance requirement and make hot/warm/cold retention add up to it.
+
+- **[severity high] HA goal exceeds the described architecture** — the doc promises resilience to regional outages, but Kafka and consumers are in a primary/core region. Either reduce the claim to multi-AZ availability, or add multi-region ingestion, regional Kafka/buffers, replication/failover, and explicit collector behavior during regional outage windows. Also fix the SLO math: **99.9% over 30 days is 43.2 minutes**, not 4.32 minutes.
+
+6. **Verdict**
+
+As written, no: this is not ready to treat as correct design. The overall architecture direction is promising, but the capacity error, retention contradiction, and HA/SLO mismatch are load-bearing enough that approving it unchanged would be risky.

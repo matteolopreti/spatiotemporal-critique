@@ -1,0 +1,21 @@
+[severity high] cache expiry is backwards, so cached remote profiles effectively never expire — change `_cache_get` to `if time.time() - stored_at < CACHE_TTL_SECONDS:`.
+
+[severity high] `is_within_grace` drops timezone info and compares against local naive time, so UTC edits are judged incorrectly depending on server timezone — parse as aware time and compare to `datetime.now(timezone.utc)`.
+
+[severity high] malformed or unexpected JSON shapes can crash `parse_remote_profiles` despite the warning path — validate that the decoded body is a dict, `profiles` is a list, and each profile is a dict before calling `.get`.
+
+[severity med] invalid `edited_at` values crash the whole sync — catch `ValueError`/`TypeError` in `is_within_grace` or `merge_profiles` and treat invalid journal entries as not within grace.
+
+[severity med] future `edited_at` timestamps always win because negative age is `< grace` — require `timedelta(0) <= now - edited <= grace`.
+
+[severity med] new local-only profiles are inserted by reference, so later mutation of `local_edits` can mutate returned/possibly pushed data — copy with `dict(edit["profile"])`.
+
+[severity med] local edits without `"profile"` or `"edited_at"` raise `KeyError` and abort sync — validate edit records and skip or surface structured errors.
+
+[severity med] `sync` pushes even when remote parsing fails and returns `[]`, which can overwrite the remote directory with only local edits or nothing — distinguish fetch/parse failure from empty directory and fail closed.
+
+[severity low] cache key `"__all__"` can collide with a real user id if `_cache_get` is reused elsewhere — use a private sentinel object or separate cache for full-directory responses.
+
+[severity low] `parse_remote_profiles` silently drops profiles with falsy ids such as `0` — validate the id type explicitly instead of relying on truthiness.
+
+VERDICT — don't ship, because the cache never expires and timestamp handling can make conflict resolution wrong.

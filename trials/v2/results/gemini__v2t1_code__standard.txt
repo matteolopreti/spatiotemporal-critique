@@ -1,0 +1,89 @@
+### 1. Preserve-list
+The following core aspects of the design are functional and must be preserved:
+* **The Sync Interface:** The high-level flow of `sync` (fetch/cache -> merge -> push) and its dependency on a `client` object.
+* **The Grace Window Concept:** The business logic allowing local edits to override remote profiles if they fall within a specific time window.
+* **JSON/Payload Parsing:** The extraction of profiles from the directory service payload, including filtering out profiles missing an `"id"`.
+
+---
+
+### 2. Steelman of Current Choices
+* **Using a global in-memory cache (`_profile_cache`):** This avoids hammering the remote directory service with expensive fetch requests during frequent sync cycles. In high-throughput or rate-limited environments, some level of caching is necessary.
+* **Stripping timezone info via `.replace(tzinfo=None)`:** This was likely done to avoid `TypeError: can't subtract offset-naive and offset-aware datetimes` when comparing against `datetime.now()`. It works perfectly if the host server's system clock is strictly set to UTC.
+* **Shallow copying with `dict(p)`:** This is a fast, low-overhead way to avoid mutating the cached remote profile objects directly when merging local edits.
+
+---
+
+### 3. Author's Actual Goal
+> **Falsifiable Claim:** The author aims to implement a state-synchronization utility that merges local edits into a remote directory, prioritizing local changes made within the last 48 hours, while using a 5-minute cache to minimize read load on the remote directory service.
+
+* **Opposing plausible-but-wrong reading:** The author wants to build a real-time, bidirectional transactional sync engine that guarantees zero data loss and strict consistency across multiple concurrent clients.
+* **Stress Test against the wrong reading:** If strict multi-client consistency were the goal, caching the remote directory during a write-back cycle (`sync`) would be an anti-pattern, as it introduces race conditions where concurrent remote updates are overwritten by stale cached data. The presence of a simple time-based grace window and a coarse local cache proves the goal is a lightweight, "last-write-wins-within-window" reconciliation utility.
+
+---
+
+### 4. Key Assumptions & Breakages
+* **Assumption 1:** The local system clock is synchronized via NTP and is set to UTC.
+  * *If wrong:* If the system clock drifts or is set to a local timezone (e.g., EST), the grace window calculation will be offset by hours, causing valid local edits to be discarded or expired edits to win.
+* **Assumption 2:** `local_edits` is structured exactly as `{user_id: {"edited_at": str, "profile": dict}}`.
+  * *If wrong:* Any deviation in this schema (e.g., missing keys) will raise unhandled `KeyError` exceptions, crashing the sync process.
+* **Assumption 3:** Profiles are flat dictionaries.
+  * *If wrong:* If profiles contain nested dictionaries (e.g., `{"contact": {"email": "..."}}`), the shallow copy `dict(p)` and subsequent `.update()` will overwrite entire nested dictionaries rather than merging them, leading to data loss.
+
+---
+
+### 5. Multi-Angle Review
+
+#### Domain Expert (Distributed Systems & API Design)
+* **The cache TTL logic is broken:** `stored_at - time.time() < CACHE_TTL_SECONDS` will always evaluate to `True` because `stored_at` (the past) minus `time.time()` (the present) is always a negative number. The cache never expires.
+* **Concurrency risk:** The global `_profile_cache` is not thread-safe. If this runs in a multi-threaded WSGI/ASGI application, concurrent syncs could corrupt the cache or yield race conditions.
+
+#### Skeptical Generalist
+* **Cache-on-write is dangerous:** Caching the remote directory during a read-modify-write cycle (`sync`) means that if another client updates the remote directory, our client will fetch stale cached data, merge its local edits, and push it back—reverting the other client's updates.
+* **Fragile error handling:** `parse_remote_profiles` catches errors but prints them to stdout instead of using standard logging. If `client.fetch_directory()` fails due to network issues, the exception is unhandled and crashes the sync.
+
+#### End User / Client Developer
+* **Unpredictable sync behavior:** If I make an edit, sync, and then immediately modify it again, the behavior might change depending on whether the cache is hit or bypassed, making debugging sync issues difficult.
+
+#### Consensus & Contested Points
+* **Consensus:** The broken TTL calculation and the timezone-naive comparison are bugs that must be fixed immediately.
+* **Contested:** The generalist argues that caching should be removed entirely from the sync path to prevent overwriting remote changes. The domain expert counters that if the remote directory is massive, removing the cache entirely could cause API rate-limiting or performance degradation. The compromise is to make caching optional or reduce the TTL significantly.
+
+---
+
+### 6. Highest-Leverage Issues
+
+#### [Severity: High] Broken Cache TTL Logic
+* **Problem:** The expression `stored_at - time.time() < CACHE_TTL_SECONDS` is mathematically guaranteed to be true for all past timestamps, meaning cached data is kept indefinitely until the process restarts.
+* **Concrete Fix:** Change the subtraction order to calculate elapsed time:
+  ```python
+  if time.time() - stored_at < CACHE_TTL_SECONDS:
+      return profile
+  ```
+
+#### [Severity: High] Timezone-Naive Comparison Bug
+* **Problem:** `datetime.now()` returns the local system time, while `edited` is parsed from a UTC ISO-8601 string and stripped of its timezone. If the server is not running in UTC, the grace window calculation will be incorrect by the timezone offset.
+* **Concrete Fix:** Keep datetimes timezone-aware. Parse the ISO string and compare it against UTC now:
+  ```python
+  from datetime import datetime, timezone
+
+  def is_within_grace(local_edit_ts, grace_hours=48):
+      edited = datetime.fromisoformat(local_edit_ts)
+      # Ensure edited is timezone-aware; default to UTC if missing
+      if edited.tzinfo is None:
+          edited = edited.replace(tzinfo=timezone.utc)
+      return datetime.now(timezone.utc) - edited < timedelta(hours=grace_hours)
+  ```
+
+#### [Severity: Medium] Shallow Copy / Nested Mutation Risk
+* **Problem:** `dict(p)` only performs a shallow copy. If remote profiles contain nested structures, mutating them via `update()` can corrupt the cached data or fail to merge nested fields properly.
+* **Concrete Fix:** Use `copy.deepcopy` when retrieving from the cache or preparing the merge dictionary to ensure isolation:
+  ```python
+  import copy
+
+  merged = {p["id"]: copy.deepcopy(p) for p in remote}
+  ```
+
+---
+
+### 8. Verdict
+Genuinely better than leaving it as is. Fixing the TTL logic and timezone handling resolves critical correctness bugs without changing the architectural footprint of the codebase.

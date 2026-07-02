@@ -1,0 +1,35 @@
+PRESERVE
+
+The layered architecture is the right shape: node-local collectors, durable buffer, stateless consumers, indexed hot search, and cheaper archival storage. Kafka as a replay buffer and Vector disk buffering are good preservation points. The document also correctly separates operational search from longer-term audit/query needs.
+
+ISSUES
+
+[severity high] Capacity math is wrong — `50,000 events/sec * 2 KB = 100 MB/sec`, not `100 GB/sec`; recalculate Kafka, network, OpenSearch, and S3 sizing from the corrected throughput, including compression, replicas, peak duration, and daily volume.
+
+[severity high] Availability math is wrong — `99.9%` over 30 days is about `43.2 minutes` downtime, not `4.32 minutes`; either correct the budget or raise the SLO to about `99.99%`.
+
+[severity high] Retention requirements contradict each other — the Storage section says cold logs are queryable up to `90 days`, but S3 purges objects exactly `30 days` after ingestion; choose one policy and align OpenSearch, S3 lifecycle, Athena, and compliance language.
+
+[severity high] Regional resilience goal conflicts with single-region design — Kafka is in the primary region and consumers run in the core region, so a regional outage or partition can break global ingestion; add regional Kafka/ingestion cells, failover routing, replication strategy, and clear RPO/RTO.
+
+[severity high] “Without dropping messages or introducing backpressure” is not a physically defensible guarantee — finite Vector disk buffers and finite Kafka capacity require a degradation policy; specify buffer sizing, spill behavior, admission control, sampling/drop rules if any, and operator alerts before exhaustion.
+
+[severity med] SLO latency target changes scope mid-document — goals say under 3 seconds from emission to index, while SLOs measure from reaching the ingestion gateway; pick one measurement boundary or define separate edge-to-gateway and gateway-to-search SLOs.
+
+[severity med] “Zero unrecoverable messages once acknowledged by Kafka” lacks the Kafka durability settings that make it meaningful — specify replication factor, `min.insync.replicas`, producer `acks=all`, idempotence, unclean leader election disabled, retention, and disaster recovery assumptions.
+
+[severity med] OpenSearch sizing is unsupported and likely inconsistent with the stated volume — 12 nodes × 1.5 TB gives 18 TB raw before replicas and headroom, while even the corrected throughput implies roughly 8.64 TB/day uncompressed; recalculate against hot plus warm retention, replica count, compression, shard sizing, and merge overhead.
+
+[severity med] The archival write path is underspecified — the design says Athena can query cold S3 logs, but does not state whether raw logs, parsed logs, or both are written to S3, by which service, with what partitioning and catalog schema; add an explicit immutable archival sink.
+
+[severity med] DLQ handling is vague and risks silent operational loss — “dropping malformed payloads to a DLQ” should define whether original bytes are preserved, how long DLQ data is retained, how replay works, and how malformed volume affects the zero-loss claim.
+
+[severity low] Compliance language is too thin — if this supports audits, specify encryption, access controls, audit logging, legal hold behavior, deletion guarantees, and whether “exactly 30 days” is compatible with compliance needs.
+
+[severity low] Partition count is asserted without broker/topic assumptions — 15 partitions may be fine or badly wrong depending on topic count, broker count, replication, key distribution, and per-partition throughput; include the sizing model instead of only the result.
+
+[severity low] ABSTAIN: I cannot judge whether Vector, Kafka, OpenSearch, UltraWarm, and Athena are the right product choices for your environment without cloud/provider constraints, team expertise, cost targets, and existing platform standards.
+
+VERDICT
+
+Do not treat this design as ready for approval. The core architecture is plausible, but the document has several correctness faults in arithmetic, SLO definition, retention policy, and regional resilience. The next revision should first reconcile the numerical model and durability/retention guarantees, then update the architecture so the stated goals are actually achievable.

@@ -1,0 +1,12 @@
+1. PRESERVE
+- Aligned epoch-based window calculation (`_current_window`) which ensures consistent window boundaries regardless of process restart times.
+- Clean, side-effect-free `remaining()` method for querying state without incrementing counters.
+- Thread-safe operations using a central lock covering all state mutations.
+
+2. ISSUES
+- [severity high] Memory leak via unbounded dictionary growth — The `_counters` dictionary retains keys and their last window state indefinitely, leading to an Out-Of-Memory (OOM) vulnerability if exposed to high-cardinality keys (like IP addresses or user IDs).
+  Fix: Implement a cleanup mechanism. For example, during `allow()`, occasionally (e.g., with a 1% probability or every 1000 requests) iterate over `_counters` and delete keys where `start < current_window - self.window_seconds`.
+- [severity low] Redundant dictionary write on blocked requests — When a key is rate-limited, `allow()` writes the unchanged `(start, count)` tuple back to `self._counters[key]`. Under a high-volume spam attack, this causes unnecessary dictionary writes and CPU overhead while holding the global lock.
+  Fix: Remove `self._counters[key] = (start, count)` inside the `if count >= self.limit:` block and directly `return False`.
+
+VERDICT — Genuinely good as a utility or test helper, but needs the memory leak fixed before use in any production service.

@@ -1,0 +1,59 @@
+1. **Preserve-list**
+
+- Clear postmortem structure: summary, timeline, root cause, impact, action items.
+- Concrete incident window, endpoints, symptoms, and customer-facing impact.
+- Mentions both latency and 5xx failures, not just one symptom.
+- Action items are tiered by time horizon and mostly tied to observability/config validation.
+- Explicitly states no data breach, which is important for payment incidents.
+
+2. **Steelman current choices**
+
+- Naming `AuthService` as root cause could be right if checkout/payment requests depend synchronously on auth and auth owns shared DB pool config.
+- Calling out `/v1/charge` is useful because it anchors the customer-facing failure mode.
+- The 90-minute duration is plausible if measured from first report at 13:40 to baseline recovery at 15:30.
+- The connection pool explanation is plausible for latency plus 5xx errors.
+- The action items target the right class of prevention: better saturation alerts, config audits, and load tests.
+
+Critiques that survive steelmanning: the timeline/root-cause chronology conflict, the trigger labeling is confusing, and the causal chain is underspecified.
+
+3. **Author’s actual goal**
+
+Falsifiable claim: this postmortem is meant to accurately explain a production payment outage, identify the causal mechanism, quantify customer impact, and propose prevention work that would have caught or avoided the same failure.
+
+Wrong-but-plausible alternative: it is mainly a customer-facing incident summary meant to reassure merchants. If that were the goal, the internal service/config detail may be too much, and the chronology problem matters less than clarity and accountability. But the current root-cause/action-item depth strongly signals an internal engineering postmortem.
+
+4. **Assumptions**
+
+- Assuming `AuthService` is in the critical path for payment authorization. If wrong, the stated root cause is probably misplaced.
+- Assuming the 14:30 deployment time is accurate. If wrong, the biggest contradiction may be a timestamp error rather than a causal error.
+- Assuming “first customer reports” are not necessarily incident start. If wrong, the postmortem needs earlier monitoring evidence.
+- Assuming failed transactions were not retried successfully later. If wrong, the impact estimate overstates permanent customer harm.
+- Assuming “secondary cluster” shares or bypasses the affected pool differently. If wrong, the load-balancer action may be irrelevant or misleading.
+
+5. **Three-angle review, merged**
+
+Domain expert: the root cause cannot currently be correct as written because the deployment at 14:30 cannot cause failures first reported at 13:40 and alerted at 13:55. Either the deployment timestamp, the root cause, or the incident start is wrong.
+
+Skeptical generalist: the story says “resource exhaustion in connection pooling logic,” “configuration error,” “AuthService update,” and “thundering herd,” but does not cleanly connect them. It reads like several plausible outage phrases were combined.
+
+End user: the impact section is useful but incomplete. A merchant would want to know whether failed charges were declined, timed out before authorization, double-charged, safely retried, or reconciled.
+
+Merged view: the main problem is correctness of causality. Contested: whether the action items are sufficient. They are directionally good, but without a corrected causal chain it is impossible to judge whether they prevent recurrence.
+
+6. **Highest-leverage issues**
+
+- [severity high] The timeline contradicts the root cause: failures begin at 13:40, alerts fire at 13:55, but the alleged causal deployment completes at 14:30 — fix by correcting the deployment time, changing the root cause, or explaining that v2.1.0 began rolling out before 13:40 and completed at 14:30.
+- [severity high] “Triggering Event” is assigned to the 14:05 load-balancer reroute, which appears to be mitigation, not trigger — fix by relabeling it as “Mitigation initiated” or identifying the actual triggering event.
+- [severity med] The causal chain is too vague: AuthService config, payment API DB pool saturation, and transaction failures are not connected — fix by adding a concise mechanism, e.g. “Payment Gateway synchronously called AuthService; v2.1.0 reduced max DB pool size from X to Y, causing auth checks to block and `/v1/charge` requests to time out.”
+- [severity med] Impact lacks payment-specific correctness details — fix by stating whether failed attempts were authorized, captured, retried, reversed, duplicated, or reconciled.
+- [severity low] “Thundering herd” may be the wrong term if requests simply queued on an undersized pool — fix by using “connection pool starvation” unless there was synchronized retry behavior.
+
+Abstain: I cannot judge whether the numbers, affected regions, or 15% failure estimate are accurate without source metrics.
+
+7. **Backward check**
+
+Skipped. No edit history is provided; I will not invent one.
+
+8. **Verdict**
+
+Not genuinely better than leaving it as-is for correctness-sensitive use until the chronology/root-cause contradiction is fixed. The smaller change that captures most of the gain is to reconcile the deployment timing and relabel the 14:05 event as mitigation. That single correction would remove the largest correctness failure.

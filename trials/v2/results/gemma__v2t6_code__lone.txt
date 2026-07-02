@@ -1,0 +1,19 @@
+This code is structurally unsound for a production environment. It contains critical logic errors regarding data integrity and significant architectural flaws regarding scalability and thread safety.
+
+[severity high] **Data Loss in `submit_batches`**: The calculation `num_batches = len(jobs) // batch_size` ignores the remainder of the division. If 10 jobs are submitted with a batch size of 3, the last job is silently discarded. — Replace the loop logic with a simple iteration over the list or use `range(0, len(jobs), batch_size)` to ensure all items are processed.
+
+[severity high] **Memory Leak on Failed Jobs**: Only "COMPLETED" and "CANCELLED" jobs are removed from the `_jobs` dictionary. If a job fails (status "FAILED"), it remains in the dictionary forever, causing the memory usage of the scheduler to grow monotonically over time. — Move `del self._jobs[job_to_run.job_id]` into the `finally` block or ensure failed jobs are removed/retried.
+
+[severity high] **Inefficient Worker Loop ($O(N)$ Complexity)**: The worker loop iterates over every single job in the dictionary to find one with a "PENDING" status. As the number of jobs grows, the time to find a single pending job increases linearly, causing massive CPU waste and latency. — Replace the `_jobs` dictionary search with a `queue.Queue` to store pending jobs for $O(1)$ retrieval.
+
+[severity high] **Manual Lock Management Risk**: In `cancel_job`, you are manually calling `.acquire()` and `.release()`. If an exception occurs between these two calls (e.g., during the `KeyError` or a logic error), the lock will never be released, deadlocking the entire scheduler. — Use `with self._lock:` for all locking operations.
+
+[severity med] **Inefficient Polling Mechanism**: The worker loop uses `time.sleep(0.1)` to poll for work. This introduces unnecessary latency and is less efficient than a blocking queue. — Use `queue.Queue.get()` which blocks the thread until an item is available, removing the need for `sleep` and manual looping.
+
+[severity med] **Lack of Atomic "Running" State**: While there is a lock around the search, the actual execution of the job happens outside the lock (correctly), but the state transition from PENDING to RUNNING is not guaranteed to be unique if you ever decide to scale to multiple worker threads. — Ensure the status update and queueing are handled by an atomic `Queue` operation.
+
+[severity low] **String-based Statuses**: Using raw strings like "PENDING" and "RUNNING" is error-prone and lacks IDE support/type checking. — Use `enum.Enum` for job statuses.
+
+[severity low] **Poor Error Logging**: `logger.error(f"...: {e}")` only captures the exception message, not the stack trace. — Use `logger.exception()` or `logger.error(..., exc_info=True)` to capture the full traceback.
+
+VERDICT — **don't ship**. The `submit_batches` logic causes silent data loss (dropping jobs), and the $O(N)$ worker loop will cause the application to hang/slow down as soon as the job volume increases. These are fundamental functional bugs.

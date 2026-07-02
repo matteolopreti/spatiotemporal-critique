@@ -1,0 +1,19 @@
+1. PRESERVE
+
+* **Strangler Facade Routing:** The strategy of routing traffic incrementally at a per-capability, per-cohort, and per-tenant level through a billing facade inside the monolith boundary.
+* **Dual-Cycle Shadow Validation:** The requirement to run the Invoice Service in shadow mode for two full billing cycles with field-by-field validation before promotion.
+* **Immutable Ledger Rollback Strategy:** The rollback constraint for Phase D that prohibits deleting ledger entries, instead requiring inactive marking and stream reconciliation to preserve the audit trail.
+* **Migration Source Lineage:** The inclusion of source system, source table, source primary key, and batch ID metadata on all migrated database rows.
+
+2. ISSUES
+
+* **[severity high] Circular phase dependency deadlock** — Phase B (Invoice) cannot start until the Phase D (Ledger) schema is accepted and implemented, but the Cutover Checklist states Phase D cannot start until Phase B has completed production promotion. 
+  * *Fix:* Define and freeze the canonical customer-balance event schema during Phase A (Foundation) so Phase B can emit to it, allowing Phase B to proceed and Phase D to start afterward as planned.
+* **[severity med] Idempotency contradiction in migration execution** — The Data Migration section states the migration script is "idempotent and safely re-runnable," but the Cutover Checklist states the batch process works by "appending new rows for every source record processed during the batch," which will cause duplicate records on retries.
+  * *Fix:* Update the Cutover Checklist to specify upsert operations (insert or update on conflict of source ID) instead of unconditional appending.
+* **[severity low] Insufficient live gateway validation in Phase C** — Shadowing the Payment Service solely using "recorded gateway responses" fails to validate actual network connectivity, SSL/TLS handshakes, or API contract drift with the live payment processor.
+  * *Fix:* Add a step in Phase C to route synthetic, zero-dollar authorization transactions to the live processor's sandbox or production environment prior to routing live internal customer accounts.
+
+3. VERDICT
+
+Genuinely good as-is, provided the circular dependency between Phase B and Phase D is resolved and the migration idempotency logic is aligned.

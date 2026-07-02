@@ -1,0 +1,31 @@
+[severity high] Root cause contradicts timeline: `AuthService` v2.1.0 deployed at 14:30, but failures started at 13:40 and connection timeouts appeared at 14:20 — fix the timeline or choose a root cause that predates the incident.
+
+[severity high] Incident duration is wrong: 13:40 to 15:30 UTC is 110 minutes, not 90 — correct the duration or change start/end times.
+
+[severity high] “Triggering Event” is assigned to the 14:05 load balancer reroute, but the root cause names the 14:30 `AuthService` deployment — identify the real trigger and make the timeline, root cause, and summary agree.
+
+[severity high] Action item says rollback was completed, but the timeline never shows a rollback; it shows a configuration fix at 15:10 — add the rollback event or rewrite the action item as the actual mitigation.
+
+[severity med] The affected component is unclear: Payment Gateway API, database pooler, downstream services, and `AuthService` are all implicated without explaining the dependency path — add a concrete architecture explanation.
+
+[severity med] “Thundering herd” is likely misused; low pool limits and queued requests timing out are not necessarily a thundering herd — either substantiate the pattern or describe it as connection pool starvation/queue saturation.
+
+[severity med] Customer reports preceded monitoring alerts by 15 minutes — call this out as a detection failure and add an action item for alert sensitivity/coverage.
+
+[severity med] Load balancer reroute at 14:05 is unexplained: did it reduce impact, worsen connection exhaustion, or fail because both clusters shared the same database? — document the observed effect and decision rationale.
+
+[severity med] Impact numbers lack consistency checks: 15% of attempts and 4,200 failures imply roughly 28,000 attempts in the window, but no baseline or source is given — cite the measurement source and time bounds.
+
+[severity med] EMEA and North America impact is asserted without explaining why those regions were primarily affected — add evidence, such as traffic distribution, cluster locality, or merchant concentration.
+
+[severity med] “Internal systems remained operational” conflicts with “latency propagated to downstream microservices” unless scoped carefully — clarify which systems stayed healthy and which degraded.
+
+[severity low] “First customer reports” as the first timeline entry omits when the system actually began degrading — add telemetry-based incident start time if available.
+
+[severity low] The action items lack owners and due dates — assign accountable teams and target completion dates.
+
+[severity low] The short-term alerting action is good but incomplete; it should include pool utilization, queue depth, wait time, timeout rate, and per-service breakdown — expand the metrics.
+
+[severity low] The postmortem does not state what prevented recurrence immediately after mitigation — add the exact production values changed and validation performed.
+
+VERDICT — don’t ship, because the causal story is internally inconsistent and the timeline makes the stated root cause impossible.

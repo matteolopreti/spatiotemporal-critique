@@ -1,0 +1,96 @@
+Here is a review of your rate limiter implementation.
+
+### Problems Found
+
+#### [severity high] Memory Leak (Unbounded Memory Growth)
+The `_counters` dictionary is never cleared of old keys unless `reset()` is called manually. In a long-running service with many unique keys (e.g., user IDs, IP addresses, or API keys), this will cause unbounded memory growth and eventually lead to an Out-Of-Memory (OOM) crash.
+* **Concrete fix:** Restructure the internal storage to group keys by window start time, i.e., `self._windows = {}` mapping `window_start_us -> {key: count}`. During `allow()`, evict any window keys that are older than the current window. This keeps memory usage bounded only to active keys in the current window.
+
+#### [severity med] Floating-Point Precision Bug in Window Calculation
+Using `now // self.window_seconds` with floating-point numbers can lead to incorrect window boundaries due to binary floating-point representation inaccuracies (e.g., `0.3 // 0.1` evaluates to `2.0` instead of `3.0` in Python). This causes some windows to be longer or shorter than expected.
+* **Concrete fix:** Convert times to integer microseconds internally before performing floor division. For example, compute the window start using `now_us = int(now * 1_000_000)` and `window_us = int(window_seconds * 1_000_000)`.
+
+#### [severity med] Non-monotonic Clock Source (`time.time()`)
+The default clock source is `time.time()`, which is subject to system clock adjustments (e.g., NTP drift corrections, manual time changes, or daylight saving adjustments). If the system clock is set backward, rate limits can be bypassed or extended unexpectedly.
+* **Concrete fix:** Use `time.monotonic()` instead of `time.time()` as the default clock source.
+
+#### [severity low] Redundant Dictionary Write on Blocked Requests
+In `allow()`, when a key has reached its limit, the code performs a redundant write `self._counters[key] = (start, count)` before returning `False`. Since the key and its value are already in the dictionary, this write is unnecessary overhead.
+* **Concrete fix:** Remove the redundant assignment and return `False` immediately.
+
+#### [severity low] Missing Type Validation for `limit`
+The `limit` parameter is not validated to be an integer. If a float (e.g., `1.5`) is passed, it can lead to unexpected behavior during comparison.
+* **Concrete fix:** Add a check in `__init__` to ensure `limit` is an instance of `int`: `if not isinstance(limit, int): raise TypeError("limit must be an integer")`.
+
+---
+
+### Improved Implementation
+
+```python
+import threading
+import time
+
+
+class RateWindow:
+    """Allow at most `limit` requests per `window_seconds` per key."""
+
+    def __init__(self, limit, window_seconds):
+        if not isinstance(limit, int):
+            raise TypeError(f"limit must be an int, got {type(limit).__name__}")
+        if limit < 1:
+            raise ValueError(f"limit must be >= 1, got {limit}")
+        if window_seconds <= 0:
+            raise ValueError(f"window_seconds must be > 0, got {window_seconds}")
+        
+        self.limit = limit
+        self.window_seconds = window_seconds
+        self._lock = threading.Lock()
+        # Maps window_start_us -> {key: count}
+        self._windows = {}
+
+    def _current_window_us(self, now):
+        now_us = int(now * 1_000_000)
+        window_us = int(self.window_seconds * 1_000_000)
+        return (now_us // window_us) * window_us
+
+    def allow(self, key, now=None):
+        """Return True and count the request if `key` is under its limit."""
+        if now is None:
+            now = time.monotonic()
+        window_us = self._current_window_us(now)
+        with self._lock:
+            # Evict expired windows to prevent memory leaks
+            expired = [w for w in self._windows if w < window_us]
+            for w in expired:
+                del self._windows[w]
+                
+            counts = self._windows.setdefault(window_us, {})
+            count = counts.get(key, 0)
+            if count >= self.limit:
+                return False
+            counts[key] = count + 1
+            return True
+
+    def remaining(self, key, now=None):
+        """Requests left for `key` in the current window (no side effects)."""
+        if now is None:
+            now = time.monotonic()
+        window_us = self._current_window_us(now)
+        with self._lock:
+            counts = self._windows.get(window_us, {})
+            count = counts.get(key, 0)
+            return max(0, self.limit - count)
+
+    def reset(self, key=None):
+        """Clear one key's counter, or all counters when key is None."""
+        with self._lock:
+            if key is None:
+                self._windows.clear()
+            else:
+                for counts in self._windows.values():
+                    counts.pop(key, None)
+```
+
+---
+
+VERDICT — don't ship, because of the high-severity memory leak that will eventually crash long-running services, and the floating-point precision issues with sub-second windows.

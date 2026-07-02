@@ -1,0 +1,46 @@
+This review evaluates the Technical Design Document for Project AetherLog based on your requested procedure.
+
+### 1. Preserve-list
+The following elements are structurally sound and must survive any edit:
+*   **The Architectural Flow:** The four-layer decoupled model (Collection $\rightarrow$ Buffering $\rightarrow$ Processing $\rightarrow$ Storage) is the industry standard for this scale.
+*   **Technology Choices:** Vector (low overhead), Kafka (durability/buffering), Go (concurrency), and OpenSearch/S3 (standard storage).
+*   **The Tiered Retention Policy:** The Hot/Warm/Cold lifecycle management is a necessary cost-control measure.
+*   **Dead-Letter Queue (DLQ) Strategy:** Essential for preventing "poison pill" messages from stalling the consumer group.
+
+### 2. Steelman
+*   **Kafka as Buffer:** While some argue for direct ingestion, Kafka provides a critical "shock absorber." During a spike or downstream outage, it prevents the Vector agents from crashing due to backpressure, preserving data integrity at the edge.
+*   **Vector over Fluentd/Logstash:** Vector’s memory-efficient architecture is superior for high-density Kubernetes nodes where resource contention is common.
+*   **Go for Processing:** Go's first-class concurrency (goroutines) allows for highly efficient concurrent parsing and enrichment of log lines without the complexity of JVM tuning required by Java-based alternatives.
+
+### 3. Author’s Goal
+**Falsifiable Claim:** The system can sustain a peak throughput of **100 GB/s** using the specified hardware (12 OpenSearch nodes) while maintaining a <3s search latency and 99.9% availability.
+
+**Wrong-but-plausible alternative:** The author intends to describe a standard, production-ready log pipeline where the numbers provided are "placeholder" estimates for a high-traffic environment, not a literal engineering specification. (The presence of specific hardware counts—12 nodes, 1.5TB NVMe—suggests the former is the intended goal).
+
+### 4. Assumptions
+*   **Assumption:** The calculation $50,000 \text{ events/sec} \times 2\text{ KB}$ equals $100\text{ GB/s}$. **If wrong:** This breaks the entire Capacity Planning section. (See Review below).
+*   **Assumption:** OpenSearch "Refresh" intervals and indexing overhead will allow for <3s searchability. **If wrong:** The SLO is mathematically impossible regardless of hardware, as it depends on internal Lucene segment merging.
+*   **Assumption:** 15 Kafka partitions provide sufficient parallelism for the specified throughput. **If wrong:** The system will experience "hot partitions" and producer bottlenecks.
+
+### 5. Multi-Perspective Review
+*   **Domain Expert (Infrastructure/SRE):** There is a catastrophic mathematical error in Section 3. $50,000 \times 2\text{ KB}$ is **100 MB/s**, not 100 GB/s. If the goal is actually 100 GB/s, the current hardware (12 nodes) would melt instantly. Furthermore, 15 partitions for a "global" high-throughput system is dangerously low; you typically want partitions to scale with your consumer count and throughput requirements.
+*   **Skeptical Generalist:** The document lacks a "Security" section. How are the TLS certificates managed? Is there encryption at rest in Kafka/OpenSearch? How do we handle PII (Personally Identifiable Information) masking before it hits the storage layer?
+*   **End User (Developer):** I need to know how I access the DLQ. If my logs are dropped because of a schema error, where is the dashboard for those errors? Also, what is the "Default" schema?
+
+**Contested Point:** The 3-second searchability SLO. It is contested whether this can be guaranteed in an OpenSearch environment due to the `refresh_interval` and the time it takes for a segment to become searchable. This is a trade-off between "Real-time visibility" and "Query performance."
+
+### 6. Highest-Leverage Issues
+1.  **[Severity: Critical] The Math/Unit Error in Section 3:** The document claims $50,000 \times 2\text{ KB} = 100\text{ GB/s}$. It is actually **100 MB/s**. This creates a massive discrepancy in hardware provisioning.
+    *   **Fix:** Correct the calculation to 100 MB/s and re-evaluate if 12 nodes are sufficient for that (they likely are). If the goal *is* GB/s, the hardware requirements must be scaled by orders of magnitude.
+2.  **[Severity: High] Kafka Partitioning Strategy:** 15 partitions is insufficient for a "high-throughput" global system. It limits the number of concurrent consumers and creates bottlenecks on individual brokers.
+    *   **Fix:** Increase partition count to at least 30–60 per topic (depending on total expected throughput) to ensure better distribution across the cluster.
+3.  **[Severity: Med] SLO Feasibility:** A 3-second searchability SLA for OpenSearch is extremely aggressive when including Kafka lag and indexing time.
+    *   **Fix:** Clarify if this is "Ingestion Latency" (Time from Producer to Kafka) or "Searchable Latency." If it's the latter, consider a "Near Real-Time" SLO of 5–10 seconds to account for index refreshes.
+
+### 7. Backward Check
+*Skipped (No edit history provided).*
+
+### 8. Verdict
+**The document is not currently fit for purpose because of the Critical Math Error in Section 3.** If implemented as written, the infrastructure would be wildly mis-provisioned.
+
+**Smaller change that captures most gain:** Correct the MB/s vs GB/s calculation and increase the Kafka partition count to ensure horizontal scalability.

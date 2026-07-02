@@ -1,0 +1,25 @@
+1. **What's working here that must be preserved?**
+*   **Thread Safety:** The use of `threading.Lock()` ensures that concurrent requests don't cause race conditions during counter increments or window transitions.
+*   **Fixed-Window Logic:** The calculation `int(now // self.window_seconds) * self.window_seconds` is the standard, correct way to implement fixed-window buckets.
+*   **Stateful Reset:** The ability to reset specific keys or the entire registry is a necessary operational feature for administrative actions (e.g., "unblocking" a user).
+
+2. **Steelman the current choices — where might they already be right?**
+*   **Dictionary-based storage:** For a single-process service, a dictionary provides $O(1)$ lookup. Using a more complex data structure would only add overhead without providing benefit for per-key tracking.
+*   **Fixed-Window over Sliding Window:** While sliding windows are "smoother," fixed windows are significantly cheaper to compute and store. For many use cases (like preventing brute force or basic API scraping), the "burst" at the edge of a window is an acceptable trade-off for lower CPU/Memory usage.
+*   **Manual `now` injection:** Allowing `now` to be passed as an argument is excellent for unit testing and deterministic simulation of time-based behavior.
+
+3. **State what the author is actually trying to achieve, as a specific consequential claim.**
+The author is claiming that a thread-safe, memory-efficient rate limiter can be implemented using a simple dictionary and global lock, provided the user accepts the "bursty" behavior of fixed windows and handles the lifecycle of unique keys manually.
+
+4. **List the assumptions you're making where things are unspecified, and what breaks if each is wrong.**
+*   **Assumption:** The set of unique keys (e.g., IP addresses) is finite or has low cardinality. *If wrong: The `_counters` dictionary will grow monotonically until the process hits an Out-of-Memory (OOM) error.*
+*   **Assumption:** The system clock (`time.time()`) is monotonic and won't be adjusted backward by NTP/system updates. *If wrong: A sudden jump backward could cause a "stuck" window where requests are denied indefinitely until the clock catches up.*
+*   **Assumption:** "Single-instance" means one OS process. *If wrong: If deployed in a multi-worker environment (e.g., Gunicorn/Uvicorn workers), the limits will not be shared across processes, allowing $N \times$ the intended traffic.*
+
+5. **The 3 highest-leverage issues only.**
+*   **[Severity High] Memory Leak:** There is no mechanism to prune old keys. If a unique key (like an IP) hits the limit once and never returns, it stays in memory forever. **Fix: Use a `cachetools.TTLCache` or a `collections.OrderedDict` to implement a Least Recently Used (LRU) eviction policy.**
+*   **[Severity High] Clock Source:** Using `time.time()` is susceptible to system clock jumps. **Fix: Replace `time.time()` with `time.monotonic()` for all duration-based logic.**
+*   **[Severity Med] Lock Contention:** The global lock protects the entire dictionary, meaning every request (even for different keys) must wait in a single queue. **Fix: For high-concurrency needs, use a "Sharded Lock" approach where keys are hashed into buckets, each with its own lock.**
+
+6. **Verdict: is this genuinely better than leaving it as is?**
+Yes, because the current implementation provides thread safety and correct window logic—which a naive implementation would lack—but it requires the memory leak fix to be production-ready.

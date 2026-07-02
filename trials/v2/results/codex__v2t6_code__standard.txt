@@ -1,0 +1,76 @@
+1. **Preserve-List**
+
+- Simple `Job` object cleanly captures callable, args, kwargs, id, and status.
+- Worker marks a job `RUNNING` under lock, then executes it outside the lock. That is the right shape.
+- Completed jobs are removed, preventing unbounded growth for successful work.
+- `batch_size <= 0` is rejected.
+- Exceptions in jobs do not kill the worker loop.
+- The scheduler is intentionally lightweight and in-memory; do not turn it into a durable queue unless the goal changes.
+
+2. **Steelman Current Choices**
+
+- `dict[str, Job]` instead of `queue.Queue`: defensible if job lookup/cancellation by id matters more than strict queue semantics. Python 3.7+ preserves insertion order, so this can still behave FIFO-ish.
+- String statuses: acceptable for a tiny scheduler; an enum would be stronger, but not required for correctness.
+- One background thread: matches “sequentially” and avoids concurrent execution complexity.
+- Deleting completed jobs: good if the registry is a work queue, not an audit log.
+- Deleting cancelled jobs: defensible if cancelled jobs should disappear from active work.
+- Daemon thread: acceptable for best-effort background work, though risky if jobs must finish on process exit.
+- Manual lock management in `cancel_job`: this one does not survive. It is correctness-sensitive and should use `with self._lock:`.
+
+3. **Author’s Actual Goal**
+
+Falsifiable claim: this code aims to provide a lightweight, thread-safe in-memory scheduler where submitted jobs are executed at most once by a background worker, pending jobs can be cancelled reliably, failed jobs do not crash the scheduler, and batch submission submits the caller’s intended set of jobs.
+
+Wrong-but-plausible alternative: this is meant to be a durable, fully featured production scheduler with persistence, retries, multiple workers, observability, and recovery across process restarts. Under that reading, the whole design is insufficient. I am not using that reading.
+
+4. **Assumptions**
+
+- Python is 3.7+. If wrong, dict iteration order is not a reliable scheduling order.
+- `submit_batches` is expected to submit all provided jobs. If wrong, the current truncation may be intentional, but the name/docstring does not say so.
+- `start()` is called once. If wrong, multiple worker threads can be launched and race over the same registry.
+- `stop()` may wait for the currently running job to finish. If wrong, there is no timeout or cooperative cancellation.
+- Duplicate `job_id`s are not expected. If wrong, `submit_job` silently replaces an existing job.
+- Failed jobs should remain inspectable. If wrong, leaving failed jobs in `_jobs` is acceptable; otherwise there is no completed/failed history API.
+
+5. **Three Angles, Merged**
+
+Domain expert: the main correctness risks are lifecycle and concurrency edges: non-idempotent `start()`, manual lock release, unsynchronized `_running`, and unclear failed-job retention.
+
+Skeptical generalist: the visible bug is `submit_batches`; it silently drops jobs in the final partial batch. Also, the API promises “worker threads” in the docstring but only implements one worker thread.
+
+End user: I would expect every submitted job to either run, be cancelled, or fail visibly. Silent replacement of duplicate ids and silent omission from batch submission violate that expectation.
+
+Contested: whether completed and cancelled jobs should be deleted is design-dependent. If this is only an active queue, deletion is fine. If callers need status history, deletion is wrong.
+
+6. **Highest-Leverage Issues**
+
+- **[severity high] `submit_batches` silently drops remainder jobs** — `num_batches = len(jobs) // batch_size` ignores any final partial batch.  
+  Concrete fix: iterate `for i in range(0, len(jobs), batch_size):` and submit `jobs[i:i + batch_size]`, or explicitly reject non-divisible input.
+
+- **[severity high] `start()` is not idempotent and can create multiple worker threads** — calling `start()` twice launches two loops over the same scheduler. The lock prevents some corruption, but lifecycle semantics become wrong and `stop()` only joins the latest thread reference.  
+  Concrete fix: guard `start()` with the lock and return or raise if already running.
+
+- **[severity med] `cancel_job` can leave the lock held if an unexpected exception occurs between acquire/release** — current manual acquire/release is fragile and inconsistent with the rest of the code.  
+  Concrete fix: rewrite with `with self._lock:` and return from inside the block.
+
+- **[severity med] duplicate job ids overwrite existing jobs silently** — this can cancel or replace pending work without signal.  
+  Concrete fix: in `submit_job`, raise `ValueError` if `job.job_id in self._jobs`, unless replacement is an explicit feature.
+
+- **[severity med] failed jobs remain in `_jobs` forever** — they are not retried, not removed, and no public status API exists. This can leak memory and leave stale failed jobs in the registry.  
+  Concrete fix: either delete failed jobs like completed jobs, or add a bounded/completed history and a `get_job_status()` API.
+
+- **[severity low] `_running` is read/written without the scheduler lock** — in CPython this will usually behave, but it is not a clean synchronization boundary.  
+  Concrete fix: use a `threading.Event` for stop/start state.
+
+- **[severity low] worker polling sleeps instead of being notified** — correctness is mostly fine, but shutdown and latency are sloppy.  
+  Concrete fix: use `threading.Condition` or `queue.Queue` if cancellation-by-id is not required.
+
+Abstain: I cannot judge whether failed/completed job history is required because no API contract is provided.
+
+7. **Backward Check**
+
+Skipped: no edit history is provided; I will not invent one.
+
+8. **Verdict**
+
+Not ready as-is for correctness. The smallest high-value change is to fix `submit_batches`, make `start()` idempotent, and rewrite `cancel_job` with `with self._lock:`. Those capture most of the correctness gain without changing the scheduler’s basic design.

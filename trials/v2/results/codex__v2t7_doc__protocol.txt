@@ -1,0 +1,19 @@
+1. PRESERVE — Clear release scope by area; concrete compatibility statement; permission-respecting search claim; specific review workflow behavior; admin retention period; explicit “no migration steps” guidance.
+
+2. ISSUES — [severity high] “ships today for all workspace tiers” conflicts with “self-hosted customers can upgrade in place” unless self-hosted is also available today — clarify rollout timing per cloud/workspace/self-hosted.
+
+[severity high] Search performance claim is too broad: “under 300 ms at p95 on workspaces up to 100,000 documents” needs conditions — specify query type, indexing freshness, permission-filtering inclusion, corpus size, and whether this is server latency or end-to-end UI latency.
+
+[severity med] “Operators … work in any combination” is absolute and likely overclaims edge cases — replace with supported combinations or link to query syntax docs.
+
+[severity med] “users only ever see documents they could already open” is strong security language — confirm snippets, titles, authors, tags, and hit counts also respect permissions, or narrow the claim.
+
+[severity med] Partial approvals are underspecified: “untouched sections” needs a concrete definition — define whether this is paragraph identity, template section ID, or text diff stability.
+
+[severity med] Activity CSV export may expose sensitive audit data — state who can export it and whether exports themselves are logged.
+
+[severity low] “roughly a third” is imprecise for release notes — give before/after or percentage range, or say “about 30%” with measurement context.
+
+[severity low] API endpoint names are ambiguous — format as code paths and clarify versioning, authentication, pagination, and availability: `/activity`, `/reviews`.
+
+VERDICT — Not good as-is for correctness; it is well-structured, but several absolute claims need tighter scope and operational definitions.

@@ -1,0 +1,21 @@
+1. **What's working here that must be preserved?**
+The "Grace Window" logic is the core value proposition. By allowing local edits to win only within a specific timeframe (48 hours), you provide a buffer for intentional local overrides while ensuring that stale, old data doesn't overwrite newer remote state indefinitely. The simple `merge_profiles` loop correctly handles the "upsert" logic (adding new users who don't exist in the remote set).
+
+2. **Steelman the current choices — where might they already be right?**
+The use of a 300-second cache (`CACHE_TTL_SECONDS`) is a pragmatic way to prevent "hammering" the directory service during rapid UI interactions while still ensuring that data doesn't stay stale for too long. Additionally, using `dict(p)` during the merge ensures you aren't mutating the original objects in the `remote` list, which prevents side-effect bugs if `merged` is reused or iterated over multiple times.
+
+3. **State what the author is actually trying to achieve, as a specific consequential claim.**
+The author is claiming that **temporal proximity is a sufficient proxy for intent**; specifically, that an edit made recently by a local user represents the "source of truth" regardless of what the remote server says, provided the action occurred within a 48-hour window.
+
+4. **List the assumptions you're making where things are unspecified, and what breaks if each is wrong.**
+*   **Assumption:** `datetime.now()` and the parsed `local_edit_ts` share the same timezone (UTC). *Break:* If the local machine is set to EST/PST and the remote timestamp is UTC, the grace window will be off by several hours, causing valid edits to be rejected or expired ones to be accepted.
+*   **Assumption:** The `client.push_profiles(merged)` method performs a full overwrite of the remote directory. *Break:* If the API performs an "append" or "patch," this code will cause duplicate entries because it doesn't track which IDs were deleted locally.
+*   **Assumption:** Profile updates are flat JSON objects. *Break:* If profiles contain nested dictionaries (e.g., `{"settings": {"theme": "dark"}}`), the `.update()` call will overwrite the entire `settings` object rather than merging the internal keys.
+
+5. **The 3 highest-leverage issues only, each as: [severity high/med/low] the problem — a concrete fix.**
+*   **[High] Timezone Naivety:** The code mixes "aware" and "naive" datetimes. `fromisoformat` handles the offset, but `.replace(tzinfo=None)` strips it, and `datetime.now()` is naive. **Fix:** Use `datetime.now(timezone.utc)` and compare against a fully aware `datetime.fromisoformat()`.
+*   **[High] Shallow Merge Data Loss:** `merged[user_id].update(edit["profile"])` destroys nested data. **Fix:** Implement a recursive merge function or ensure the `edit` payload contains the full intended state of the object.
+*   **[Med] Cache Inconsistency:** The cache is keyed by `"__all__"`, but there is no mechanism to invalidate this cache when a local push succeeds. **Fix:** Explicitly clear or update the `__all__` key in `_cache_put` immediately after a successful `push_profiles`.
+
+6. **Verdict: is this genuinely better than leaving it as is?**
+Yes, because the logic handles the "Sync Conflict" problem (Local vs. Remote) which is a standard requirement for distributed systems; however, it requires the timezone and deep-merge fixes to be production-ready.

@@ -1,0 +1,29 @@
+[severity high] Broken pagination logic in `_page_bounds` — The current implementation excludes the last item when the total count is a perfect multiple of the page size (e.g., if total is 10 and page size is 5, it returns `(5, 9)`, skipping index 9). Replace with:
+```python
+def _page_bounds(self, total: int, page_size: int) -> list[tuple[int, int]]:
+    return [(i, min(i + page_size, total)) for i in range(0, total, page_size)]
+```
+
+[severity high] File handle leak in `_sha256_file` — If an exception occurs during the reading or hashing of a file, the file handle remains open because it is not managed by a context manager. Use `with path.open("rb") as handle:` to ensure the handle is closed on all exit paths.
+
+[severity med] Incomplete change detection in `_record_changed` — The method ignores the `mtime_ns` field. Files that are overwritten with identical content but different timestamps will not be synchronized. Add a check for `mtime`:
+```python
+return (
+    int(remote.get("size", -1)) != local.size
+    or str(remote.get("sha256", "")) != local.sha256
+    or int(remote.get("mtime", -1)) != local.mtime_ns
+)
+```
+
+[severity med] Flawed exclusion logic in `_is_ignored` — The check `name.startswith(".")` or `.tmp` matches any file or directory name, which could cause the client to skip valid subdirectories that happen to have a dot-prefix or a tmp suffix. Change to only apply these rules if the path is a file:
+```python
+def _is_ignored(self, path: Path) -> bool:
+    if not path.is_file():
+        return False
+    name = path.name
+    return name.endswith(".tmp") or name.startswith(".") or name == "sync.lock"
+```
+
+[severity low] Lack of error handling in `sync` — If `upload_changes` fails (e.g., due to a network timeout), the `delete_remote` method is never called, potentially leaving the remote state inconsistent with the local state. Wrap the execution in a try/except block or implement a more robust state-tracking mechanism for large sync jobs.
+
+VERDICT — don't ship, because the pagination bug causes data loss (files are skipped) and the file handle leak will eventually cause "Too many open files" crashes on large directories.

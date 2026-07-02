@@ -1,0 +1,56 @@
+This review evaluates the provided file synchronization client for correctness, architectural integrity, and production readiness.
+
+### 1. Preserve-list
+*   **Transport Protocol:** The `Transport` protocol is excellent; it decouples the sync logic from specific storage providers (S3, FTP, etc.).
+*   **Data Structures:** `FileRecord` and `ChangeSet` provide clear, immutable snapshots of state.
+*   **Streaming Hash:** The use of a buffered read in `_sha256_file` prevents memory exhaustion on large files.
+*   **Batching Logic:** The intent to batch uploads/deletes is essential for handling rate-limited or high-latency remote APIs.
+
+### 2. Steelman
+The current architecture prioritizes **predictability and atomicity of state**. By performing a full `scan()` and a full `fetch_manifest()` before any action is taken, the system ensures that the `ChangeSet` represents a consistent snapshot of the world at time $T$. This avoids "partial sync" states where some files are updated but others are missed because they were modified during the scan.
+
+### 3. Author's Goal
+**Claim:** The author intends to provide a memory-efficient, batch-aware skeleton for synchronizing large file sets where individual files may exceed available RAM.
+**Alternative Reading (Wrong):** This is a real-time "watcher" implementation meant to react instantly to file system events. (This is incorrect because the code uses `rglob` and `scan()` rather than `inotify` or `watchdog`).
+
+### 4. Assumptions
+*   **Memory:** The remote manifest fits in memory as a dictionary. *Break: If there are millions of files, this will cause an OOM (Out of Memory) error.*
+*   **Permissions:** The user has read permissions for all paths in the tree. *Break: `path.stat()` or `path.open()` will raise `PermissionError`, crashing the scan.*
+*   **Consistency:** The remote manifest is updated atomically by the provider. *Break: If the manifest is partially written, the diffing logic may produce incorrect deletes.*
+
+### 5. Review from Angles
+*   **Domain Expert (Distributed Systems):** The "Delete" logic is dangerous. It assumes that if a file exists on remote but not local, it should be deleted. This doesn't account for "Unsynced" files (files you haven't added to the sync set yet). A `sync_list` or `.gitignore`-style exclusion is needed.
+*   **Skeptical Generalist:** The `_page_bounds` method looks like it contains a logic error regarding the final page. It also doesn't handle the case where `batch_size` might be larger than the total file count gracefully (though `min()` handles this, the loop logic is still messy).
+*   **End User:** The `wait_until_quiet` method is a "magic" fix for race conditions with editors. It doesn't actually guarantee that a file isn't locked; it just hopes the editor is done.
+
+### 6. Highest-leverage issues
+
+[Severity High] **The `_page_bounds` logic bug** — The current implementation of `if end == total and total % page_size == 0: end -= 1` will cause the final batch to be empty or skipped if it perfectly fits the page size.
+*   **Fix:** Remove the `if` block entirely. The standard `min(start + page_size, total)` logic is sufficient for slicing.
+
+[Severity High] **Lack of Exception Safety in Hash/Stat** — If a file is deleted or locked between `rglob` and `stat`, or during the hash read, the entire sync crashes.
+*   **Fix:** Wrap the body of the loop in `scan()` in a `try...except (OSError, PermissionError): continue` block to ensure one bad file doesn't kill the whole sync.
+
+[Severity Med] **Inefficient Change Detection** — The code calculates the SHA256 for *every* file during every scan. This is extremely slow for large directories where most files haven't changed.
+*   **Fix:** Only calculate `sha256` if `stat.st_size` or `stat.st_mtime_ns` differs from the remote manifest.
+
+[Severity Med] **Missing Context Manager** — The file handle in `_sha256_file` is closed manually, but not in a `finally` block or `with` statement.
+*   **Fix:** Use `with path.open("rb") as handle:`.
+
+### 7. Backward check
+No edit history provided.
+
+### 8. Verdict
+**The work is better than leaving it as is.** The current `_page_bounds` logic is mathematically broken and will cause the client to skip files during synchronization, leading to data inconsistency.
+
+**Smaller change for most gain:** Fix the `_page_bounds` method by removing the `if` condition:
+```python
+def _page_bounds(self, total: int, page_size: int) -> list[tuple[int, int]]:
+    bounds: list[tuple[int, int]] = []
+    start = 0
+    while start < total:
+        end = min(start + page_size, total)
+        bounds.append((start, end))
+        start += page_size
+    return bounds
+```

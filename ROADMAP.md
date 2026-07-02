@@ -11,12 +11,13 @@ The framework is mature (v4.x); everything here is gated by the project's own ru
 
 First measurement is in: the protocol beat the lone critic on the same seat (recall up, invented problems down 2.6×), and the panel union hit 18/18 recall within its pre-stated invented-problem bound. The design, criteria (stated before running), caveats, and the format-robust counter owed by battery v2 all live in TRIAL.md; the harness is `trial_runner.py` + `trials/` (raw responses committed, re-scorable with `--report`).
 
-## v5.0 — gate status after the Trial
+## v5.0 — gate CLOSED (2026-07-02): the harness is falsified, and that is the result
 
-**Gate 1 (panel value) — passed:** union recall 18/18 within the invented-problem bound (TRIAL.md, criteria pre-stated).
-**Gate 2 (protocol-as-brief, the cheap falsification) — run 2026-07-02, verdict: diminishing returns.** Shipping the whole Standard preset to a non-Claude seat cut invented problems further (codex: 11 → 8) at unchanged recall — a real but modest gain that does **not** justify a new harness architecture by itself. Recall was ceilinged by battery v1, so the discriminating experiment still owes a **harder battery** (artifact-scale, subtler flaws).
+All gates ran, pre-registered, on two batteries (TRIAL.md):
 
-**Remaining before any v5.0 build:** battery v2 (artifact-scale fixtures + a format-robust findings counter) · the orchestrator contract (what a non-Claude runner must honor: mandates, abstention, no green lights, intent stays human) · the synthesis-ownership decision (current doctrine: the reducer stays with the owner-side model) · one strong second-lineage seat with real quota headroom.
+- **Gate 1 (panel value) — passed twice:** union recall 18/18 (v1) and 14/14 (v2) within the invented-problem rate bound.
+- **Gate 2 (fuller contracts on one seat) — negative returns:** the Standard brief and the full **protocol-as-harness** beat the plain seat contract *nowhere* — equal recall with more noise on the strong seats, and *lost* recall on the small local seat. The harness panel was strictly worse than the shipped protocol panel (25 vs 21 invented, identical recall).
 
-- **Multi-council review** (up to 3 vendors, blind, union-of-findings, disagreement-first, Full tier only) is *already shipped* as `--panel`; v5.0 would extend it to a full **protocol-as-harness**: a different-lineage model running the whole spatiotemporal protocol (not just a critique seat), with a third lineage as its external check.
-- Standing rules carried into any v5.0: agreement — even unanimous — is corroboration, never proof; model judgment raises, only deterministic checks gate; no combined verdicts, no green lights; intent adjudication stays human.
+**Decision: no protocol-as-harness.** The shipped design — plain probe-certified seat contracts + blind multi-vendor panel + owner-side synthesis — is the measured optimum. The version line stays 4.x until a *new mechanism* earns a major bump through its own pre-registered trial; a negative result honestly recorded is worth more than a version number. The **orchestrator contract** (PROTOCOL.md) stays as the standing spec for anyone who wants to run the protocol from another model anyway — with the empirical warning attached. Synthesis ownership stays with the owner-side model — the question is now settled by data rather than doctrine.
+
+**Open, unblocking nothing:** battery v3 (hard enough to discriminate *between* strong seats on recall — needed only for seat-ranking claims, not for the architecture) · whole-repo-scale measurement.

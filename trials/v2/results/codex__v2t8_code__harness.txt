@@ -1,0 +1,22 @@
+PRESERVE
+
+- Clear, small API: `allow`, `remaining`, and `reset` match the stated limiter behavior.
+- Locking is correctly scoped around shared counter reads/writes.
+- `remaining()` is side-effect free as documented.
+- The implementation correctly enforces per-key fixed windows for normal monotonic-ish `now` values.
+
+ISSUES
+
+[severity med] counters grow without bound for high-cardinality keys — add stale-window eviction, either opportunistically during `allow()` or via a `prune(now=None)` method, so a long-running service cannot retain every key ever seen.
+
+[severity med] default clock uses `time.time()`, so wall-clock jumps can reopen or skip windows and violate the intended request limit — either document that `now` is wall-clock aligned and clock changes affect behavior, or inject a clock/use monotonic time for duration-based limiting.
+
+[severity low] accepted key requirements are implicit — document that keys must be hashable, or normalize/validate keys on entry if callers may pass structured request objects.
+
+[severity low] `demo()` is useful but not a real regression suite — move these cases into tests and add boundary cases for exact window edges, separate keys, reset-one-key, and concurrent calls.
+
+ABSTAIN: I cannot judge whether aligned epoch windows are the intended product behavior versus rolling/sliding windows; the code is correct for fixed aligned windows, but not interchangeable with those other limiter semantics.
+
+VERDICT
+
+The core implementation is correct for an in-process fixed-window limiter. The main correctness risk is operational: unbounded key retention, plus clock-jump behavior if this is used outside controlled tests. I would address those before relying on it in a long-running service.

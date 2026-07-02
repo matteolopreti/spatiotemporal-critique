@@ -1,0 +1,17 @@
+1. PRESERVE — layered architecture is clear: Vector agents, Kafka buffering, Go consumers, OpenSearch/S3 storage. The Kafka acknowledgment boundary is correctly used for the “zero unrecoverable after ack” goal. Tiered hot/warm/cold storage is directionally right for cost control.
+
+2. ISSUES — [severity high] capacity math is wrong by 1000x: 50,000 events/sec * 2 KB = 100 MB/sec, not 100 GB/sec — fix all downstream sizing from corrected throughput, including Kafka partitions, broker count, EBS I/O, OpenSearch daily volume, and retention storage.
+
+[severity high] retention requirements contradict each other: section 2 says cold storage is queryable up to 90 days, section 5 says S3 permanently purges after exactly 30 days — choose one policy and align compliance, lifecycle rules, and Athena query expectations.
+
+[severity high] availability goal claims regional outage resilience, but Kafka and consumers are only in one primary/core region — add multi-region ingestion failover, regional Kafka clusters with replication, or explicitly downgrade the outage-resilience claim.
+
+[severity med] SLO downtime math is incorrect: 99.9% over a 30-day window allows about 43.2 minutes, not 4.32 minutes — either fix the budget or change the target to 99.99%.
+
+[severity med] “without dropping log messages or introducing backpressure” is unrealistic under sustained downstream failure; finite Vector disk buffers and 24h Kafka retention only defer loss — define overload behavior, buffer limits, sampling/drop policy, and alert thresholds.
+
+[severity med] Kafka partition claim is unsupported: 15 partitions for 100 MB/sec may or may not be enough depending on replication factor, compression, broker count, keying, producer batching, and per-partition throughput — replace with a benchmark-backed sizing model.
+
+[severity med] DLQ “manual inspection” is operationally weak at log scale — define DLQ retention, replay tooling, alerting, ownership, PII handling, and malformed-message rate limits.
+
+VERDICT — not good as-is: the architecture shape is reasonable, but the numeric errors and direct contradictions undermine the design’s correctness.

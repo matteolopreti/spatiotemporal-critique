@@ -1,0 +1,36 @@
+This review evaluates the `profile_sync` module for correctness, reliability, and production readiness.
+
+### Technical Review
+
+**[severity high] Timezone Naivety / Comparison Crash**
+The code uses `datetime.fromisoformat(...).replace(tzinfo=None)` and compares it against `datetime.now()`. This is a dangerous pattern. If the system clock is set to UTC but the input string contains an offset, or if the local machine is in a different timezone, the comparison will be logically incorrect. Furthermore, comparing "naive" datetimes can cause crashes in certain Python environments when mixed with aware objects.
+*Fix:* Use `datetime.now(timezone.utc)` and ensure all inputs are converted to UTC-aware objects using `.replace(tzinfo=None)` only if you are strictly enforcing a local-only clock (which is not the case here).
+
+**[severity high] Race Condition / Lost Updates**
+The sync logic follows a "Fetch -> Merge -> Push" flow without any versioning or ETags. If two clients fetch the same state, perform different merges, and then push, the last one to call `push_profiles` will overwrite the other's changes entirely. This is a classic distributed systems failure.
+*Fix:* The remote directory must provide a `version` or `last_updated` timestamp per profile. The `push_profiles` method should only succeed if the version hasn't changed since the fetch.
+
+**[severity high] Shallow Merge Data Loss**
+The use of `merged[user_id].update(edit["profile"])` performs a shallow update. If a profile contains nested dictionaries (e.g., `"settings": {"theme": "dark", "notifications": true}`), and the local edit only changes the theme, the entire `settings` object will be overwritten by the local version, deleting the notifications key.
+*Fix:* Implement a recursive merge function for the profile dictionary to preserve nested keys not present in the local edit.
+
+**[severity med] Cache Key Inconsistency**
+The `_cache_get` and `_cache_put` functions are designed to handle specific `user_id` keys, but the `sync` function calls them using a hardcoded `"__all__"` string. This makes the cache logic confusing and prevents it from ever being used for individual profile lookups if that were ever required.
+*Fix:* Standardize the cache keying. If the intent is to cache the entire directory, the variable should be named `_directory_cache` and not imply user-specific IDs.
+
+**[severity med] Lack of Network Error Handling**
+The `sync` function calls `client.fetch_directory()` and `client.push_profiles()` without any exception handling. In a production environment, network timeouts, 500 errors, or DNS failures will cause the entire sync worker to crash.
+*Fix:* Wrap the client calls in a try/except block that handles specific connection/timeout exceptions and implements a retry strategy (e.g., exponential backoff).
+
+**[severity low] Memory Leak in Cache**
+The `_profile_cache` dictionary grows indefinitely. While there is a TTL check, an entry is only deleted if it is accessed *after* it has expired. If the system fetches thousands of unique profiles once, they will stay in memory forever.
+*Fix:* Use a `collections.OrderedDict` to implement a Least Recently Used (LRU) eviction policy or a fixed-size cache.
+
+**[severity low] Weak JSON Parsing**
+`parse_remote_profiles` catches `ValueError`, but `json.loads()` can also throw `TypeError` if the input is not a string/bytes. 
+*Fix:* Catch `(ValueError, TypeError)`.
+
+---
+
+### VERDICT — DON'T SHIP
+The current implementation contains critical flaws regarding **concurrency (race conditions)** and **data integrity (shallow merges)**. Shipping this would likely result in data loss where users' settings are overwritten or deleted during simultaneous syncs.

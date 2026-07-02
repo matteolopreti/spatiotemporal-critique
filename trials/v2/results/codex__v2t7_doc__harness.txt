@@ -1,0 +1,27 @@
+**PRESERVE**
+
+Clear structure by user-facing area; strong coverage of search, review, admin, performance, fixes, and compatibility; concrete claims where useful; permissions and history/audit concerns are called out instead of implied; compatibility section is practical and reduces upgrade anxiety.
+
+**ISSUES**
+
+[severity high] “Ships today” is not durable and becomes incorrect after publication day — replace with “Meridian 2.4 is now available” or add an absolute release date.
+
+[severity high] “Requires no migration steps” conflicts with “self-hosted customers can upgrade in place from any 2.x version” if internal database migrations still run during upgrade — clarify as “no manual migration steps” if that is the actual claim.
+
+[severity med] “All 2.x integrations and API tokens continue to work unchanged” is too broad given new `/activity` and `/reviews` endpoints may require scopes, permissions, or client handling — narrow to “existing integrations and tokens continue to work for existing endpoints.”
+
+[severity med] The search latency claim could be misread as a production guarantee for every customer under 100,000 documents — qualify the benchmark conditions, e.g. “on our standard benchmark corpus; actual latency varies by workspace shape and deployment.”
+
+[severity med] “Users only ever see documents they could already open” is an absolute security claim — make it precise: “Search results are permission-filtered using the same access rules as document open permissions.”
+
+[severity med] Partial approvals “for untouched sections” is underspecified: edits elsewhere can change meaning or dependencies — define whether “untouched” means byte-identical section content, unchanged template section ID, or no edits since approval.
+
+[severity low] “From:name” is ambiguous for display names with spaces or duplicate authors — document the exact syntax, such as `from:"Avery Chen"` or `from:user-id`, if supported.
+
+[severity low] Admin CSV export of sign-ins, permission changes, publishing events, and export actions may imply sensitive audit data is broadly exportable — state which admin roles can export it, or link to the permission model.
+
+ABSTAIN: I cannot verify whether the performance numbers, 180-day retention, API behavior, and self-hosted upgrade path are factually true without product docs, benchmark data, or implementation history.
+
+**VERDICT**
+
+The notes are coherent and mostly ship-shaped, but a few claims are broader than the evidence provided. Tighten the durability, migration, API compatibility, benchmark, and permission language before publishing; the main fix is precision, not restructuring.

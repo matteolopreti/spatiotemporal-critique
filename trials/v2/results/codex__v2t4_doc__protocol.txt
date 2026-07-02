@@ -1,0 +1,15 @@
+1. PRESERVE — Clear incident scope, affected endpoint, customer impact, rough duration, and concrete follow-up categories. The action items are directionally useful, especially alerting on pool wait time and adding load tests.
+
+2. ISSUES — [severity high] Timeline contradicts root cause: failures start at 13:40, alerts at 13:55, but `AuthService` v2.1.0 deploy completes at 14:30 and is blamed as the primary driver — fix by either moving the deploy before 13:40 with evidence, or changing root cause to the earlier config/load-balancer/database condition and treating the 14:30 deploy as unrelated/noise.
+
+[severity high] “Triggering Event” is assigned to the 14:05 manual load balancer reroute, but the incident had already begun — fix by labeling this as a mitigation attempt, not the trigger.
+
+[severity med] Root cause mixes “configuration parameters set too low,” “connection pooling logic,” and “thundering herd” without a precise failure mechanism — fix by stating the exact setting, previous/new values, expected traffic, observed pool wait/timeout behavior, and why requests queued instead of failing fast or shedding load.
+
+[severity med] Impact claims are under-supported: 15%, 4,200 failed transactions, EMEA/North America, and downstream order notification delays are asserted without measurement basis — fix by adding source metrics, denominator, time window, and whether figures are estimates or confirmed.
+
+[severity med] Immediate action says rollback was completed, but timeline says a configuration fix was deployed, not a rollback — fix the action item to match what actually happened, or add the rollback event to the timeline.
+
+[severity low] Detection gap is implied but not analyzed: customers reported failures before monitoring alerted — fix by adding a “Detection” or “What went poorly” section explaining why alerting lagged by 15 minutes and how that will be corrected.
+
+VERDICT — Not good as-is; the central causality is internally inconsistent, so the postmortem cannot be trusted until the timeline and root cause are reconciled.

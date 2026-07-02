@@ -1,0 +1,40 @@
+### 1. Preserve-list
+*   **Performance Metrics:** The specific p95 latency (300ms) and scale (100k docs) must remain; they provide the "proof" required for enterprise adoption.
+*   **Partial Approvals Logic:** The distinction that returned drafts keep approvals for untouched sections is a high-value workflow detail that must not be generalized.
+*   **Technical Specifics:** The mention of "sidebar hydration off the critical path" and "local queuing/retrying" for comments provides necessary technical weight for power users.
+*   **Compatibility Guarantee:** The explicit "no migration steps" and "no deprecations" is a critical trust-builder for enterprise customers.
+
+### 2. Steelman
+*   **Choice: Including specific bug fixes (e.g., spreadsheet styling).** *Defense:* While some might argue this "clutters" release notes, it builds significant trust with users who were frustrated by those specific bugs. It proves the team is listening to granular feedback.
+*   **Choice: Listing p95 metrics for search.** *Defense:* This avoids the "marketing fluff" trap of saying "Search is faster." For a workspace of 100,000 documents, speed is a non-negotiable requirement, not a luxury.
+
+### 3. Author's Goal
+**Falsifiable Claim:** The goal of this text is to reassure enterprise administrators and power users that Meridian 2.4 improves **governance, scale, and reliability** without introducing breaking changes or migration friction.
+
+*   **Wrong-but-plausible alternative:** The goal is to announce a "New AI-powered search experience."
+*   **Stress:** This is incorrect because the text contains zero mention of LLMs, generative features, or "smart" suggestions; it focuses entirely on indexing, permissions, and administrative audit logs.
+
+### 4. Assumptions
+*   **Assumption:** "Ownership transfers to a nominated successor" implies that the successor inherits the previous owner's permissions. *What breaks if wrong:* If the successor gets the documents but no permissions to edit them, this becomes a major friction point for admins.
+*   **Assumption:** "All workspace tiers" means there is no "Free" tier where these features are excluded. *What breaks if wrong:* If some features (like Activity View) are gated behind a "Pro" tier, the phrasing "for all workspace tiers" is technically inaccurate and could lead to support tickets.
+
+### 5. Multi-angle Review
+*   **Domain Expert (Product Manager):** The inclusion of "partial approvals" in the review workflow is excellent—it addresses a real-world complexity where documents are edited in chunks. However, I'd want to know if there's a UI indicator for which sections are "Approved" vs "Pending."
+*   **Skeptical Generalist:** The search performance claim (300ms) feels like a laboratory result. Does it hold up with 50MB individual files? The text doesn't specify file size limits, which is a potential "gotcha" for users with large attachments.
+*   **End User (Admin):** The "Activity View" is the highlight here. I need to know if "Sign-ins" includes IP addresses or just timestamps. The current text is slightly vague on the *depth* of data provided.
+
+**Merged Review:** The notes are highly effective for a professional/enterprise audience. There is a **contested** point regarding the depth of the Activity View: the technical team wants to keep it brief to avoid over-promising, while the Admin user needs to know exactly what they can see (e.g., IP addresses) to satisfy security audits.
+
+### 6. Highest-leverage issues
+*   **[Med] Ambiguity in Seat Reassignment:** The phrase "ownership transfers" is slightly ambiguous regarding permissions. **Fix:** Change to "Ownership and associated permissions transfer to a nominated successor..." (Verify with engineering if this is the intended behavior).
+*   **[Low] Search Operator Clarity:** "Work in any combination" can be interpreted as nested booleans (e.g., `(from:name OR tag:urgent) AND -term`). **Fix:** Abstain from changing unless confirmed that nested logic is supported; if not, add "Simple combinations."
+*   **[Low] Activity View Scope:** The list of events (sign-ins, etc.) is good, but the "filterable by user" part could be clearer. **Fix:** Ensure it's clear whether this means "Filter by a specific user's actions" or "Filter by a specific date." (The current phrasing is acceptable).
+
+### 7. Backward check
+*Skipped.*
+
+### 8. Verdict
+**Is it genuinely better than leaving it as is?** Yes, because the Seat Reassignment section carries high risk for an Admin user; clarifying that permissions transfer alongside ownership prevents a "broken" experience during offboarding.
+
+**Smaller change that captures most of the gain?**
+Update the Administration section: *"Seats can now be reassigned without deleting the departing user's documents; ownership and permissions transfer to a nominated successor with the full edit history kept."*

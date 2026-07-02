@@ -1,0 +1,66 @@
+Here is a review of the code.
+
+### Problems Found
+
+#### [severity high] Broken Cache Expiration Logic
+In `_cache_get`, the expiration check is written as:
+```python
+if stored_at - time.time() < CACHE_TTL_SECONDS:
+```
+Because `stored_at` is in the past relative to `time.time()`, `stored_at - time.time()` will always be a negative number (e.g., `-10`). Since any negative number is less than `300` (`CACHE_TTL_SECONDS`), this condition is **always true**. The cache will never expire.
+* **Concrete Fix**: Change the condition to check if the elapsed time is less than the TTL:
+  ```python
+  if time.time() - stored_at < CACHE_TTL_SECONDS:
+  ```
+
+#### [severity high] Timezone Skew in Grace Period Calculation
+In `is_within_grace`, you strip the timezone from the UTC timestamp using `.replace(tzinfo=None)` and compare it against `datetime.now()` (which returns the server's *local* naive time). If the server running this code is not set to UTC, this introduces a timezone offset error equal to the server's offset from UTC (e.g., 5–8 hours of skew), causing incorrect merge decisions.
+* **Concrete Fix**: Keep the timezone awareness and compare against UTC:
+  ```python
+  from datetime import datetime, timezone
+
+  def is_within_grace(local_edit_ts, grace_hours=48):
+      edited = datetime.fromisoformat(local_edit_ts)
+      # Ensure timezone awareness is preserved and compared against UTC now
+      return datetime.now(timezone.utc) - edited < timedelta(hours=grace_hours)
+  ```
+
+#### [severity high] Global Cache Collision across Clients
+The cache `_profile_cache` is a global variable, and `sync` hardcodes the cache key as `"__all__"`. If the application instantiates multiple `client` objects to sync different directories or tenants, they will all share and overwrite the same global cache key, leading to severe data leakage/corruption across clients.
+* **Concrete Fix**: Namespace the cache key using a unique client identifier (e.g., `f"{client.id}__all__"`) or move the cache storage to be an instance variable of the `client` object.
+
+#### [severity med] Fragile Exception Handling in `parse_remote_profiles`
+The `try-except` block only catches `(ValueError, KeyError)`. If `payload` is `None` or an unexpected type, `json.loads` will raise a `TypeError`. If the parsed JSON is a list or a primitive instead of a dictionary, `body.get` will raise an `AttributeError`. If any profile element `p` is not a dictionary, `p.get` will raise an `AttributeError`. Any of these will crash the sync process.
+* **Concrete Fix**: Catch `TypeError` and `AttributeError` as well, or validate the type of `body` and its elements:
+  ```python
+  def parse_remote_profiles(payload):
+      try:
+          body = json.loads(payload)
+          if not isinstance(body, dict):
+              return []
+          profiles = body.get("profiles", [])
+          return [p for p in profiles if isinstance(p, dict) and p.get("id")]
+      except (json.JSONDecodeError, TypeError) as exc:
+          print(f"profile parse warning: {exc}")
+          return []
+  ```
+
+#### [severity low] Shared Reference in `merge_profiles`
+When a local edit is not present in the remote profiles, you assign it directly: `merged[user_id] = edit["profile"]`. This passes a mutable dictionary reference. If the caller subsequently mutates the `local_edits` dictionary, the returned merged list will also be mutated, leading to unpredictable side effects.
+* **Concrete Fix**: Shallow-copy the profile dictionary before assigning it:
+  ```python
+  merged[user_id] = dict(edit["profile"])
+  ```
+
+#### [severity low] Thread-Safety on Cache Eviction
+In `_cache_get`, `del _profile_cache[user_id]` is used to evict expired keys. In a multi-threaded environment, if two threads attempt to evict the same expired key simultaneously, one will raise a `KeyError`.
+* **Concrete Fix**: Use `.pop` with a default value to safely evict:
+  ```python
+  _profile_cache.pop(user_id, None)
+  ```
+
+---
+
+### VERDICT
+
+**DON'T SHIP** — The cache never expires due to a broken mathematical comparison, the grace-period logic is broken by timezone-skew bugs, and using a single global cache key `"__all__"` will cause data corruption if multiple clients are used.

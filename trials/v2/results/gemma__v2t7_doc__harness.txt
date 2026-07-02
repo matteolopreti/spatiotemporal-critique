@@ -1,0 +1,14 @@
+**PRESERVE**
+- The clear categorical structure (Search, Review workflows, Administration, Performance/Fixes, Compatibility).
+- The inclusion of quantifiable performance metrics (300 ms at 95th percentile) and specific technical details (sidebar hydration off the critical path).
+- The explicit mention of "no migration steps" and "self-hosted" upgrade paths, which are high-value for enterprise customers.
+- The preservation of the "Permissions" guarantee in the Search section—a critical security/privacy point.
+
+**ISSUES**
+- [High] **Search Performance Ambiguity:** The claim "Queries return in under 300 ms" does not specify if this is *server-side processing time* or *end-to-end latency*. In a distributed system, these are vastly different. — *Add "at the server level" or "from query to result set" to clarify.*
+- [Med] **Review Workflow State Ambiguity:** The text mentions "partial approvals are possible," but does not define the state of a document that is partially approved. Does it remain in "Draft" status? Can a partial approval be published? — *Clarify if a partially approved document remains in a 'Pending' state or if specific sections can be 'Published'.*
+- [Med] **Admin View Access Scope:** The text states "Workspace admins get a new activity view," but does not specify if this is a global view or restricted to specific permissions (e.g., Security Admin vs. Billing Admin). — *Specify which admin roles have access.*
+- [Low] **Compatibility/Migration Risk:** While it says "no migration steps," it doesn't explicitly state if the *data schema* remains compatible with 2.x tools. — *Add a brief confirmation that data schemas remain backward-compatible for 2.x integrations.*
+
+**VERDICT**
+The release notes are structurally sound and cover the necessary technical ground for a professional software update. However, the "Correctness" of the Search performance claim is currently vulnerable to interpretation errors (Client vs. Server latency). Furthermore, the Review Workflow section introduces a complex state (Partial Approval) that requires a clearer definition of the resulting document status to prevent user confusion during the first adoption cycle. The artifact is ready for publication pending the clarification of the 300ms metric and the "Partial Approval" state.

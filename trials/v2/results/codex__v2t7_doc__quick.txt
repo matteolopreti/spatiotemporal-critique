@@ -1,0 +1,29 @@
+1. **What’s Working**
+The notes are clear, scoped, and user-facing. They preserve the right structure: major feature areas first, fixes later, compatibility last. The strongest parts are the concrete capability claims: body-text search, named reviewers, activity export, 180-day retention, seat reassignment, no deprecated API surface.
+
+2. **Steelman**
+The current choices may already be right because the release is framed around outcomes rather than implementation. The search section gives measurable performance and permission guarantees. Review workflows are described as a complete user loop, not just “approvals exist.” Admin features are tied to auditability and continuity, which are probably the buyer-facing value. The compatibility section correctly lowers perceived upgrade risk.
+
+3. **Actual Goal**
+The author is trying to claim: **Meridian 2.4 is a safe, low-friction upgrade that materially improves discoverability, controlled publishing, and admin auditability without breaking existing 2.x workflows or integrations.**
+
+4. **Assumptions**
+I’m assuming the stated performance benchmark includes permission-filtered body search; if not, the search claim may overpromise real-world latency.
+
+I’m assuming “users only ever see documents they could already open” includes titles, snippets, counts, and result existence; if not, the notes may imply stronger access control than the product provides.
+
+I’m assuming “no migration steps” means no customer-performed migration, not no database/schema migration at all; if wrong, self-hosted admins may skip necessary preparation.
+
+I’m assuming partial approvals have stable rules for what counts as an “untouched section”; if not, reviewers/authors may misunderstand approval persistence.
+
+I’m assuming “ships today for all workspace tiers” excludes deployment timing for self-hosted customers unless they upgrade manually; if not, the availability claim is muddy.
+
+5. **Highest-Leverage Issues**
+[severity high] The compatibility claim is too absolute: “requires no migration steps” plus “upgrade in place from any 2.x” could be false or dangerous for self-hosted installs if automatic schema migrations, version constraints, or backup/rollback requirements exist — change to: “No manual migration steps are required for hosted workspaces. Self-hosted deployments can upgrade in place from any supported 2.x version; database migrations run automatically during upgrade. Back up the database first.”
+
+[severity high] The search permissions claim is correctness-sensitive and underspecified — explicitly state whether search suppresses unauthorized document existence, titles, snippets, and counts. Concrete fix: “Search results, snippets, counts, and filters only include documents the user has permission to open.”
+
+[severity medium] The performance claim lacks enough measurement context to be safely publishable — add benchmark qualifiers: corpus size, warm/cold cache if relevant, whether body indexing and permission filtering are included, and whether 300 ms is server-side or end-to-end. Abstain on whether the number itself is true; I can only judge the claim’s precision.
+
+6. **Verdict**
+Conditionally yes: this is better than leaving the release undocumented or vague. But as publishable release notes, it needs tightening around the highest-risk correctness claims before shipping, especially compatibility, permissions, and benchmark framing.

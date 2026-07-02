@@ -1,0 +1,13 @@
+[severity med] Uses `time.time()` wall clock for limiting — system clock jumps backward/forward can incorrectly extend or reset windows and allow/deny requests incorrectly. Concrete fix: use `time.monotonic()` for process-local windows, or inject a clock and explicitly document wall-clock aligned semantics.
+
+[severity med] `limit` accepts non-integers — `limit=2.5` allows 3 requests because counts are integers and the comparison is `count >= self.limit`. Concrete fix: require `isinstance(limit, int)` and `limit >= 1`.
+
+[severity med] `window_seconds` accepts `NaN`, `inf`, and odd numeric values — validation only checks `<= 0`, so invalid floats can fail later or produce nonsensical windows. Concrete fix: require a finite positive `int`/`float` with `math.isfinite(window_seconds)`.
+
+[severity med] Unbounded key growth — every new key remains in `_counters` forever unless manually reset, so a long-running service can leak memory or be exhausted by high-cardinality keys. Concrete fix: evict stale windows during operations, add TTL cleanup, or expose/prune expired counters.
+
+[severity low] `now` is unchecked — callers can pass `NaN`, `inf`, strings, or times that move backward and get exceptions or incorrect counter resets. Concrete fix: validate `now` as a finite numeric timestamp, or document that `now` is trusted test-only input.
+
+[severity low] The demo is not real test coverage — it misses boundary behavior, separate keys, reset-one-key, invalid constructor inputs, non-integer limits, stale windows, and concurrency. Concrete fix: add unit tests covering these cases.
+
+VERDICT — don't ship, because the core limiter works for the happy path but has correctness holes around time handling, input validation, and unbounded counter retention.

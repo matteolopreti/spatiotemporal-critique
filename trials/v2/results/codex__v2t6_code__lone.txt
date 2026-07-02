@@ -1,0 +1,29 @@
+[severity high] `cancel_job()` raises `KeyError` while holding `_lock`, permanently deadlocking the scheduler — use `with self._lock:` or `try/finally` so every path releases the lock.
+
+[severity high] `submit_batches()` drops remainder jobs when `len(jobs)` is not an exact multiple of `batch_size` — iterate with `range(0, len(jobs), batch_size)` and submit the final partial batch.
+
+[severity high] Calling `start()` more than once spawns multiple worker threads, so jobs can run concurrently despite the scheduler implying sequential execution — guard `start()` with the lock and make it idempotent or reject repeated starts.
+
+[severity high] `submit_job()` silently overwrites an existing job with the same `job_id`; if the overwritten job is running, completion can delete the replacement job — reject duplicate IDs or use internal job tokens and only delete if `_jobs[job_id] is job_to_run`.
+
+[severity high] `_worker_loop()` blindly deletes `self._jobs[job_to_run.job_id]` after execution, which can delete a newer job submitted under the same ID while the old job was running — validate object identity before deletion.
+
+[severity med] `_running` is read and written without synchronization, so lifecycle behavior is not actually thread-safe across implementations or future changes — replace it with `threading.Event` or protect it with the scheduler lock.
+
+[severity med] `stop()` can block forever if the current job never returns — support a timeout, document the behavior, or run jobs through cancellable worker infrastructure.
+
+[severity med] Failed jobs remain in `_jobs` forever, causing stale registry entries and memory growth — either remove failed jobs after recording status elsewhere or add an explicit retained-results store with cleanup.
+
+[severity med] `cancel_job()` claims it cancels pending jobs, but it cancels any non-running job still in the registry, including failed jobs — only allow cancellation when `job.status == "PENDING"`.
+
+[severity med] There is no safe way to inspect job status after completion/cancellation because completed and cancelled jobs are deleted — add a status/result registry or define that the scheduler is fire-and-forget.
+
+[severity low] Job status is public mutable state and can be changed by callers while the scheduler is using it — make status internal to the scheduler or expose read-only access guarded by the lock.
+
+[severity low] Exceptions are logged without traceback, making execution failures hard to debug — use `logger.exception("Error executing job %s", job_to_run.job_id)`.
+
+[severity low] The worker uses polling with `time.sleep(0.1)`, delaying execution and shutdown unnecessarily — use a `threading.Condition` or queue to wake the worker when jobs arrive or shutdown begins.
+
+[severity high] If the trailing ``` is literal source text, the module has a syntax error and will not import — remove the Markdown fence from the Python file.
+
+VERDICT — don't ship, because there are deadlocks, dropped jobs, lifecycle races, and duplicate-ID corruption paths.

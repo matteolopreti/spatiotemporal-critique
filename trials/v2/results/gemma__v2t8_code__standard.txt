@@ -1,0 +1,39 @@
+This review follows the requested procedure.
+
+### 1. Preserve-list
+*   **Thread Safety:** The use of `threading.Lock` correctly protects the "check-then-act" logic on the dictionary.
+*   **Fixed-Window Logic:** The calculation `int(now // self.window_seconds) * self.window_seconds` is the standard, correct way to implement fixed-window boundaries.
+*   **API Design:** The separation of `allow()` (side-effecting) and `remaining()` (non-side-effecting) is a good practice for rate limiter design.
+*   **Input Validation:** Basic guards on `limit` and `window_seconds` prevent trivial configuration errors.
+
+### 2. Steelman
+*   **Choice: Dictionary of Tuples `(start, count)`:** This is the simplest way to represent state. While a nested dictionary or a custom object might be more "Pythonic," this keeps the memory footprint per-key minimal and the logic easy to follow for a single-instance service.
+*   **Choice: Threading Lock over Atomic Counters:** Since Python's `dict` is not thread-safe for compound operations (checking a value then incrementing it), a Mutex is the most straightforward way to ensure correctness without moving to complex atomic primitives.
+
+### 3. Author's Actual Goal
+The author intends to provide a **thread-safe, per-key fixed-window rate limiter** that behaves predictably in a single-process environment.
+*   *Wrong-but-plausible alternative:* The author is trying to build a high-performance, production-grade gateway component. (Rejected: The docstring explicitly states "Not distributed" and "single-instance," implying the focus is on correctness of logic over extreme scale/distributed state).
+
+### 4. Assumptions
+*   **Assumption:** Memory is sufficient for all unique keys. *What breaks if wrong:* If a malicious actor or a high-cardinality set of IDs (e.g., User Agents) hits the service, the `_counters` dictionary will grow indefinitely until the process runs out of memory (OOM), as there is no TTL or eviction policy.
+*   **Assumption:** The system clock is monotonic and won't jump backward significantly. *What breaks if wrong:* If the system clock syncs and jumps back, a user could potentially "reset" their quota by waiting for the time to repeat a previous window.
+
+### 5. In-Context Angles
+*   **Domain Expert (Concurrency/Systems):** The lock is held during dictionary access, which is correct. However, `window = self._current_window(now)` is calculated *outside* the lock in both methods. While unlikely to cause a crash, it means the "current window" could theoretically change between calculation and acquisition of the lock.
+*   **Skeptical Generalist:** The implementation lacks a way to clear old keys without calling `reset()`. In a real-world service, if a user stops making requests, their key stays in memory forever. This is a "memory leak" by design.
+*   **End User:** The API is intuitive. I can easily wrap this in a decorator or middleware.
+
+**Merged Review:** There is a consensus that the logic is functionally correct for its stated scope (single-instance/test), but there is a **contested** point regarding memory management: Is it a "bug" if the dictionary grows forever? For a *test* utility, no; for a *service*, yes.
+
+### 6. Highest-leverage issues
+1.  **[Severity High] Memory Leak:** The `_counters` dictionary has no eviction policy. **Fix:** Use a `collections.OrderedDict` to implement a basic LRU cache or use a TTL-based dictionary (like `cachetools.TTLCache`) to ensure old keys are purged.
+2.  **[Severity Med] Race Condition on Window Calculation:** The window is calculated outside the lock. **Fix:** Move `window = self._current_window(now)` inside the `with self._lock:` block to ensure the state checked is perfectly synchronized with the moment of acquisition.
+
+### 7. Backward check
+*Skipped (No edit history provided).*
+
+### 8. Verdict
+**Yes, the review provides a better version of the work.** The current code is "correct" in its logic but "unsafe" for production use due to the memory leak.
+
+**Smaller change that captures most gain:**
+Move `window = self._current_window(now)` inside the lock and add a comment/warning about the lack of an eviction policy for high-cardinality keys.

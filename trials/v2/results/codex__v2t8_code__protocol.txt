@@ -1,0 +1,9 @@
+1. PRESERVE — clear fixed-window semantics; injectable `now` makes boundary behavior testable; locking correctly protects counter reads/writes; `remaining()` avoids mutating stale counters.
+
+2. ISSUES — [severity med] counters grow forever for high-cardinality keys — add expiry/pruning of entries whose `window_start` is older than the current window, or expose a bounded cleanup policy.
+
+[severity med] `time.time()` is wall-clock time, so clock jumps can reopen old windows or skip windows unpredictably — use `time.monotonic()` by default, or document that `now` is wall-clock aligned and vulnerable to system clock changes.
+
+[severity low] `reset(key=None)` cannot reset the literal `None` key if `None` is a valid key — use a private sentinel default, e.g. `def reset(self, key=_MISSING)`.
+
+VERDICT — not genuinely good as-is for production use because unbounded key growth and wall-clock behavior are correctness risks; fine for simple tests or single-process demos.
