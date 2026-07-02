@@ -1,0 +1,26 @@
+1. PRESERVE
+* **Deterministic Traffic Shifting Gates**: The explicit progression (0% -> 1% -> 10% -> 50% -> 100%) combined with strict minimum observation durations (10, 20, 30 minutes) prevents arbitrary or rushed promotions.
+* **Expand-Contract Database Rules**: The clear separation of database schema changes into additive (expand) and destructive (contract) phases, with a strict prohibition of contract migrations during active blue-green promotions, ensures continuous backward and forward compatibility.
+* **Time-Bound Rollback Triggers**: Defining rollback thresholds with consecutive-minute durations (e.g., "for 2 consecutive minutes") prevents transient network blips or cold-start spikes from triggering unnecessary rollbacks.
+
+2. ISSUES
+
+[severity high] Deployment sequence runs database preflight checks after deploying the candidate application.
+QUOTE: "2. Deploy the release artifact to the candidate color with customer traffic at **0%**. Do not modify the primary color."
+QUOTE: "3. Run database preflight checks. Confirm all required expand-phase schema changes are present, all migrations are marked complete, and no contract-phase migration is included in the release."
+WHY: Deploying the candidate application before verifying database schema compatibility risks application crash-loops or runtime errors if the required database migrations are missing or incomplete.
+FIX: Swap the order of Step 2 and Step 3 so database preflight checks run and pass before any application code is deployed to the candidate color.
+
+[severity med] Terminology swap causes operational ambiguity during post-promotion rollbacks.
+QUOTE: "8. Shift traffic to **100% candidate / 0% primary**. Observe for **30 minutes**. If all thresholds pass, mark the candidate as the new primary color."
+QUOTE: "3. If candidate traffic is already at 100% and the previous primary is still within the 60-minute rollback-ready window, route traffic back to **100% previous primary / 0% candidate**."
+WHY: Once the candidate is marked as the "new primary color" at minute 30, the rollback terminology ("previous primary", "candidate") becomes logically inverted and ambiguous during an active incident in the remaining 30 minutes of the rollback window.
+FIX: Defer officially marking the candidate as the "new primary" until the entire 60-minute rollback-ready window has elapsed, keeping the "candidate" and "primary" labels stable throughout the entire active rollback-ready period.
+
+[severity low] Mathematical ambiguity in low-traffic gate evaluation.
+QUOTE: "Candidate HTTP 5xx rate is **0.20% or lower**, measured as no more than **20 failed requests per 10,000 candidate requests**."
+QUOTE: "A gate with fewer than **10,000 candidate requests** must be extended until it has at least **10,000 candidate requests** or has observed traffic for **30 minutes**, whichever happens first."
+WHY: If a low-traffic gate times out at 30 minutes with fewer than 10,000 requests (e.g., 1,000 requests), the literal threshold of "no more than 20 failed requests per 10,000" is mathematically undefined or permits up to 20 failures (a 2.0% error rate), which violates the 0.20% target.
+FIX: Clarify that if the 30-minute timeout is reached with fewer than 10,000 requests, the 0.20% ratio threshold applies strictly to the actual number of requests observed (e.g., maximum 2 failures per 1,000 requests).
+
+VERDICT — Genuinely good as-is, requiring only minor sequencing and terminology adjustments to prevent deployment-time race conditions and operational confusion during rollbacks.

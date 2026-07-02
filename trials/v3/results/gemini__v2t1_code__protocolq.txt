@@ -1,0 +1,22 @@
+1. PRESERVE
+* The simple, low-overhead in-memory caching mechanism (`_profile_cache`) that avoids redundant directory fetches.
+* The clean separation of concerns between parsing, merging logic, and the main `sync` orchestration.
+
+2. ISSUES
+[severity high] Broken cache TTL logic — change the subtraction order to `time.time() - stored_at < CACHE_TTL_SECONDS` so expiration is calculated correctly.
+QUOTE: "    if stored_at - time.time() < CACHE_TTL_SECONDS:"
+WHY: Subtracting the current time from a past timestamp always yields a negative number, which is always less than the positive TTL, preventing the cache from ever expiring.
+
+[severity high] Timezone-naive comparison bug — compare timezone-aware datetimes using UTC instead of stripping timezone info and comparing against local system time.
+QUOTE: "    edited = datetime.fromisoformat(local_edit_ts).replace(tzinfo=None)"
+QUOTE: "    return datetime.now() - edited < timedelta(hours=grace_hours)"
+WHY: Stripping the UTC offset and comparing it to `datetime.now()` (which uses the local system timezone) introduces a timezone offset error that corrupts the grace-period calculation on any server not set to UTC.
+
+[severity med] Unhandled TypeError during JSON parsing — catch `TypeError` in addition to `ValueError` and `KeyError` to handle cases where the client returns `None` or non-string data.
+QUOTE: "    try:"
+QUOTE: "        body = json.loads(payload)"
+QUOTE: "        return [p for p in body.get("profiles", []) if p.get("id")]"
+QUOTE: "    except (ValueError, KeyError) as exc:"
+WHY: If the directory client fails and returns `None` or another non-string type, `json.loads` raises a `TypeError` which escapes the try-except block and crashes the sync process.
+
+VERDICT — Not genuinely good as-is, because the cache never expires and the timezone comparison logic will incorrectly merge or overwrite profiles depending on the host server's local timezone configuration.

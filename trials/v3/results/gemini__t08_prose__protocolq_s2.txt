@@ -1,0 +1,15 @@
+1. PRESERVE
+* **Quantified Performance Metrics:** The specific performance claim ("reduced report generation time by roughly 30% on ledgers with more than 50,000 entries") provides concrete, verifiable value rather than vague "speed improvements."
+* **Actionable CSV Import Details:** Explaining the exact mechanics of the CSV import (detecting headers, 10-row preview) clearly communicates the user benefit and how it prevents errors.
+* **Platform and Availability Clarity:** The final paragraph clearly states the cost (free for subscribers) and the exact platforms supported, leaving no ambiguity for users.
+
+2.  ISSUES
+[severity low] Outdated biometric terminology — Change "fingerprint unlock" to "biometric authentication" or "fingerprint and face unlock" to accurately reflect modern iOS (Face ID) and Android hardware.
+QUOTE: "adds fingerprint unlock on supported devices."
+WHY: This phrasing excludes face-recognition technologies like Face ID, which is the primary biometric authentication method on most modern iOS devices.
+
+[severity low] Logical ambiguity in automated recurrence notes — Clarify whether these notes are generated using dynamic placeholders (e.g., billing month) or if individual scheduled occurrences must be edited manually.
+QUOTE: "each recurrence can carry its own note."
+WHY: In an automated recurring invoice system, it is logically unclear how future, automatically generated invoices can have unique, individual notes without manual intervention.
+
+VERDICT — Genuinely good as-is, offering a highly concise, readable, and concrete summary of product updates with only minor biometric terminology and logical details to polish.

@@ -1,0 +1,24 @@
+1. PRESERVE — The layered architecture is clear: Collection, Buffering, Processing, Storage. Vector daemonsets with disk buffers, Kafka replay, consumer lag scaling, DLQ handling, and tiered storage are all concrete design choices worth keeping.
+
+2. ISSUES
+
+[severity high] Capacity math is off by 1000x, which invalidates Kafka/OpenSearch sizing — correct throughput to 100 MB/s, or explicitly change event size/rate assumptions and recalculate every downstream capacity number.
+QUOTE: "We anticipate a peak ingestion rate of 50,000 log events per second across all production clusters. Assuming an average uncompressed log event size of 2 KB, the pipeline must be provisioned to handle a peak throughput of 100 GB per second at the ingestion tier."
+WHY: 50,000 × 2 KB/sec is 100,000 KB/sec, about 100 MB/sec, not 100 GB/sec.
+
+[severity high] Retention requirements contradict each other — decide whether historical logs are retained/queryable for 30 days or 90 days, then align S3 lifecycle, Athena query claims, and compliance language.
+QUOTE: "To support compliance audits, the system allows users to query historical cold storage logs up to 90 days old using an on-demand Athena-based query interface."
+QUOTE: "*   **Cold Tier (Amazon S3):** All logs in the cold storage tier (S3) are governed by an automated lifecycle policy that permanently purges objects exactly 30 days after ingestion."
+WHY: Logs permanently purged 30 days after ingestion cannot be queried up to 90 days old.
+
+[severity high] The availability math is wrong by 10x — change the downtime budget to 43.2 minutes per 30 days for 99.9%, or change the SLO to 99.99% if 4.32 minutes is intended.
+QUOTE: "*   **Endpoint Availability:** The ingestion pipeline target availability is set to 99.9% over any rolling 30-day window, which translates to a maximum allowable downtime budget of 4.32 minutes per month for critical ingestion endpoints."
+WHY: 0.1% of a 30-day month is 43.2 minutes, not 4.32 minutes.
+
+[severity med] The design claims resilience to regional outages but places core Kafka and consumers in one primary/core region — add active-active regional ingestion buffers, regional failover, replication strategy, and recovery semantics.
+QUOTE: "*   **High Availability:** Ensure the ingestion endpoint remains highly resilient to regional cloud outages and network partitions."
+QUOTE: "*   **Buffering Layer (Apache Kafka):** A multi-AZ Kafka cluster acts as the primary ingestion buffer, deployed across three availability zones in our primary cloud region."
+QUOTE: "*   **Processing Layer (Aether-Consumer):** A custom Go-based service runs as a deployment in our core region, scaling dynamically based on consumer group lag."
+WHY: Multi-AZ in one region protects against AZ failure, not loss or isolation of the primary/core region.
+
+VERDICT — Not good as-is: the structure is solid, but the core correctness errors in throughput, retention, availability, and regional failure design would lead to wrong provisioning and false reliability claims.

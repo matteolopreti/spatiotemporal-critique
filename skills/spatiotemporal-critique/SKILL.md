@@ -56,7 +56,7 @@ A panel + one backward check, when the Quick six aren't enough. (For the heavier
 8. Verdict: genuinely better than leaving it as is — and is there a smaller change that captures most of the gain?
 
 ## Independent external critic — optional
-Critics run by one model in one context only *approximate* independence (same weights, correlated errors). For a genuinely uncorrelated view, route the artifact to a **different-lineage** model via the bundled helper:
+Critics run by one model in one context only *approximate* independence (same weights, correlated errors). For a genuinely uncorrelated view, route the artifact to a **different-lineage** model via the bundled helper. Since v4.15 every seat runs under an **evidence contract** — each finding must QUOTE the work verbatim; a deterministic gate removes unquotable findings (marked, never silent) and `--panel` cross-examines each seat's findings with a different-lineage verifier ([measured](../../TRIAL.md): 5.6× fewer invented findings at zero panel recall cost, fixture scale; `--no-verify` opts out):
 
 ```bash
 python3 external_critic.py --init           # ZERO-CONFIG first run: detect + score free/sub seats, remember a panel

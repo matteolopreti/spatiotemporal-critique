@@ -1,0 +1,20 @@
+1. PRESERVE — Standard postmortem structure is present and useful: summary, timeline, root cause, impact, and action items. Keep the concrete operational details: `/v1/charge`, `ConnectionTimeoutExceptions`, connection pool saturation, affected regions, and alerting/load-test follow-ups.
+
+2. ISSUES —
+[severity high] Root cause chronology is impossible — either move the `AuthService` deployment before the first failures or stop naming it as the primary driver.
+QUOTE: "13:40 UTC - First customer reports of transaction failures and "Gateway Timeout" errors are received by the Support team."
+QUOTE: "14:30 UTC - Deployment of the `AuthService` update v2.1.0 is completed successfully."
+QUOTE: "The primary driver of this incident was the deployment of the `AuthService` update v2.1.0 at 14:30 UTC, which caused the initial spike in transaction failures"
+WHY: A 14:30 deployment cannot cause the initial spike when customer failures began at 13:40 and alerts fired at 13:55.
+
+[severity med] Incident duration is internally inconsistent — correct the stated duration to 110 minutes or change the restoration time to 15:10.
+QUOTE: "The incident began at approximately 13:40 UTC and lasted for 90 minutes before full service was restored."
+QUOTE: "15:30 UTC - Monitoring confirms that 5xx error rates have returned to baseline levels."
+WHY: 13:40 to 15:30 is 110 minutes, not 90 minutes.
+
+[severity med] Remediation record does not match the timeline — add a rollback event or rewrite the action item as the configuration fix that actually happened.
+QUOTE: "**Immediate:** Roll back the `AuthService` configuration to the previous stable version and verify connection pool stability (Completed)."
+QUOTE: "15:10 UTC - Configuration fix is deployed to production."
+WHY: The timeline records a configuration fix, not a rollback to the previous stable version.
+
+VERDICT — Not good as-is; the postmortem’s central causal claim contradicts its own timeline.

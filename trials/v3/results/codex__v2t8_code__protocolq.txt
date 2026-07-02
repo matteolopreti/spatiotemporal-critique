@@ -1,0 +1,21 @@
+1. PRESERVE — per-key isolation, simple lock-based thread safety, clear fixed-window semantics, deterministic `now` injection for tests, and side-effect-free `remaining()`.
+
+2. ISSUES
+[severity med] fractional `window_seconds` can assign boundary requests to the wrong window because float floor division is imprecise — either require integer seconds or store/compute timestamps in integer nanoseconds.
+QUOTE: "if window_seconds <= 0:"
+QUOTE: "return int(now // self.window_seconds) * self.window_seconds"
+WHY: The constructor accepts fractional windows, but `_current_window()` uses binary float floor division, which is known to misclassify values such as decimal boundaries.
+
+[severity med] counters never expire for inactive keys, so a long-running service with unbounded key cardinality leaks memory — prune old windows opportunistically or add a max-size/TTL eviction policy.
+QUOTE: "self._counters = {}  # key -> (window_start, count)"
+QUOTE: "self._counters[key] = (start, count + 1)"
+QUOTE: "def reset(self, key=None):"
+WHY: The only automatic writes add or replace per-key entries, and cleanup exists only through explicit `reset()`, so stale keys persist forever.
+
+[severity low] wall-clock rollback can reopen an already-used older window and permit extra requests — use `time.monotonic()` for default timing, or reject/regulate timestamps older than the stored window for that key.
+QUOTE: "now = time.time()"
+QUOTE: "if start != window:"
+QUOTE: "start, count = window, 0"
+WHY: Any clock movement to a different window resets the count, including movement backward, so rate limits can be bypassed by non-monotonic time.
+
+VERDICT — not genuinely good as-is for production services; the core shape is sound, but time precision, clock behavior, and stale-key retention need tightening.

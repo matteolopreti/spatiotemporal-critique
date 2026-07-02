@@ -1,0 +1,26 @@
+1. PRESERVE
+* **Decoupled Transport Protocol**: The `Transport` protocol cleanly separates the sync logic from the underlying network/storage implementation, facilitating easy unit testing.
+* **Memory-Efficient Hashing**: Streaming file reads in 1MB chunks in `_sha256_file` prevents high memory consumption when hashing large files.
+* **Batched Operations**: The client groups uploads and deletes into batches, preventing API rate-limiting or payload size issues on large sync operations.
+
+2. ISSUES
+[severity high] Off-by-one batching bug in `_page_bounds` that drops the last element of a batch when the total count is a multiple of the page size — remove the conditional decrement of `end` entirely so that bounds remain standard half-open intervals.
+QUOTE: "            if end == total and total % page_size == 0:"
+QUOTE: "                end -= 1"
+WHY: This logic decrements the end index when the total count is a multiple of the page size, causing the last item of the batch to be silently skipped during slicing.
+
+[severity high] Resource leak of unclosed file handles in `_sha256_file` when encountering empty files or when an exception occurs — wrap the file opening in a `with path.open("rb") as handle:` context manager.
+QUOTE: "        handle = path.open("rb")"
+QUOTE: "        first_block = handle.read(1024 * 1024)"
+QUOTE: "        if first_block == b"":"
+QUOTE: "            return EMPTY_SHA256"
+WHY: If the file is empty, the method returns early without calling `handle.close()`, leaking the file descriptor.
+
+[severity med] Ineffective ignore logic for files inside hidden or ignored directories — check if any individual path component in the relative path matches the ignore patterns instead of only checking the leaf filename.
+QUOTE: "    def _is_ignored(self, path: Path) -> bool:"
+QUOTE: "        """Skip transient files that should not be synchronized.""""
+QUOTE: "        name = path.name"
+QUOTE: "        return name.endswith(".tmp") or name.startswith(".") or name == "sync.lock""
+WHY: By only checking `path.name`, files located inside hidden directories (e.g., `.git/config`) are not ignored because their leaf names do not start with a dot.
+
+VERDICT — Not good as-is; contains a critical batching bug that silently drops files and a file descriptor leak on empty files.

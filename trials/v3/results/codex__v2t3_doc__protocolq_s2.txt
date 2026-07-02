@@ -1,0 +1,23 @@
+1. PRESERVE — The layered Collection → Kafka Buffering → Consumer Processing → Storage architecture is sound. Vector daemonsets with local disk buffers, Kafka replay, consumer-lag autoscaling, DLQ handling, and hot/warm/cold storage are concrete design choices worth keeping. The SLOs are measurable in form and tied to operational use.
+
+2. ISSUES —
+[severity high] Throughput math is wrong by 1000x — change `100 GB per second` to about `100 MB/s` or `0.1 GB/s`, then redo Kafka/OpenSearch sizing from that corrected baseline.
+QUOTE: "We anticipate a peak ingestion rate of 50,000 log events per second across all production clusters. Assuming an average uncompressed log event size of 2 KB, the pipeline must be provisioned to handle a peak throughput of 100 GB per second at the ingestion tier."
+WHY: 50,000 × 2 KB/sec is roughly 100,000 KB/sec, not 100 GB/sec.
+
+[severity high] The regional availability goal is contradicted by a single-primary-region architecture — add multi-region ingestion, regional Kafka clusters, failover routing, replication, and explicit partition behavior.
+QUOTE: "Ensure the ingestion endpoint remains highly resilient to regional cloud outages and network partitions."
+QUOTE: "A multi-AZ Kafka cluster acts as the primary ingestion buffer, deployed across three availability zones in our primary cloud region."
+QUOTE: "A custom Go-based service runs as a deployment in our core region"
+WHY: Multi-AZ inside one primary/core region does not satisfy resilience to regional cloud outages.
+
+[severity high] Retention requirements conflict — choose either 30-day purge or 90-day queryability, and align lifecycle policy, compliance language, and Athena access accordingly.
+QUOTE: "the system allows users to query historical cold storage logs up to 90 days old using an on-demand Athena-based query interface."
+QUOTE: "All logs in the cold storage tier (S3) are governed by an automated lifecycle policy that permanently purges objects exactly 30 days after ingestion."
+WHY: Logs cannot be queryable up to 90 days old if they are permanently purged exactly 30 days after ingestion.
+
+[severity med] The downtime budget is off by 10x — correct it to 43.2 minutes per 30 days, or raise the availability target if 4.32 minutes is intended.
+QUOTE: "99.9% over any rolling 30-day window, which translates to a maximum allowable downtime budget of 4.32 minutes per month"
+WHY: 0.1% of 30 days is 43.2 minutes, while 4.32 minutes corresponds roughly to 99.99%.
+
+VERDICT — Not good as-is: the architecture direction is reasonable, but the capacity math, retention policy, and availability claims contain correctness errors that would mislead implementation.

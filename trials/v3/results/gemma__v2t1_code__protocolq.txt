@@ -1,0 +1,23 @@
+1. PRESERVE
+- The grace window logic correctly implements a "local wins" conflict resolution strategy for recent edits without requiring complex state tracking.
+- The `_cache_get` implementation correctly handles TTL by deleting expired entries from the dictionary.
+- The use of `dict(p)` in `merge_profiles` ensures that the original remote objects are not mutated during the merge process.
+
+2. ISSUES
+[severity high] Timezone-naive comparison — Use `datetime.now(timezone.utc)` or `datetime.utcnow()` to ensure consistency with ISO-8601 UTC inputs.
+QUOTE: "return datetime.now() - edited < timedelta(hours=grace_hours)"
+WHY: `datetime.now()` returns a naive local time object, while the input is specified as UTC; this will cause incorrect results on any system not set to UTC.
+
+[severity high] Data loss on parse error — Raise an exception instead of returning an empty list to prevent overwriting the remote database with only local edits.
+QUOTE: "except (ValueError, KeyError) as exc:
+        print(f\"profile parse warning: {exc}\")
+        return []"
+WHY: If a network error or malformed JSON occurs during fetch, returning an empty list causes `merge_profiles` to treat the remote directory as empty, which will result in `push_profiles` overwriting all other users' data with only the local edits.
+
+[severity med] Stale cache after push — Invalidate the `"__all__"` cache key after a successful `push_profiles` call.
+QUOTE: "payload = client.fetch_directory()
+        remote = parse_remote_profiles(payload)
+        _cache_put(\"__all__\", remote)"
+WHY: The cache is populated with the result of the fetch but is never invalidated or updated after `client.push_profiles(merged)`, meaning subsequent syncs will use stale remote data for up to 300 seconds.
+
+VERDICT — This is not good as-is because the error handling in `parse_remote_profiles` creates a critical "delete all" bug during network failures.

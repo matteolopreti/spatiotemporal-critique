@@ -1,0 +1,19 @@
+1. PRESERVE — Clear structure by product area; concrete user-facing behavior; good permission note for search; specific performance and retention numbers; compatibility section covers integrations, tokens, API, and self-hosted upgrades.
+
+2. ISSUES — 
+[severity high] “requires no migration steps” is too absolute given new body indexing, review history, activity logs, and new API surfaces — change to “requires no manual migration steps” and state whether reindexing/background migrations run automatically.
+QUOTE: "Search now indexes document body text in addition to titles and tags."
+QUOTE: "every review decision is recorded in the document's history panel."
+QUOTE: "Workspace admins get a new activity view: sign-ins, permission changes, publishing events, and export actions"
+QUOTE: "Meridian 2.4 requires no migration steps."
+WHY: These features imply new indexed data and persisted records, so the compatibility claim needs to distinguish user/admin steps from automatic platform migrations.
+
+[severity med] “ships today” is not correct as durable release-note copy — replace with an absolute release date.
+QUOTE: "Meridian 2.4 ships today for all workspace tiers."
+WHY: “today” becomes false or ambiguous as soon as the notes are read after publication day.
+
+[severity med] The API paths are underspecified and may be technically incorrect as written — give full versioned paths and resource names.
+QUOTE: "the REST API adds two read-only endpoints (/activity and /reviews)"
+WHY: Bare root paths are rarely the actual stable REST contract, and release notes should not leave integrators guessing whether these are `/api/v2/activity`, workspace-scoped routes, or something else.
+
+VERDICT — Not genuinely good as-is for correctness; it is strong product copy, but it makes a few absolute technical claims that need tighter, verifiable wording.

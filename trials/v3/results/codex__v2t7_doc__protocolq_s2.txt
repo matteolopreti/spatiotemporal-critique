@@ -1,0 +1,17 @@
+1. PRESERVE — Clear structure by feature area; concrete user-facing behavior; useful compatibility section; security-relevant assurance that search results respect document permissions.
+
+2. ISSUES
+
+[severity high] Time-sensitive availability claim can become incorrect immediately — replace “today” with an absolute release date.
+QUOTE: "Meridian 2.4 ships today for all workspace tiers."
+WHY: “Today” is only correct on the publication date and becomes false or ambiguous when copied, archived, or read later.
+
+[severity med] Performance claim is too precise without enough measurement conditions — add corpus size, environment, query mix, and whether permission filtering is included.
+QUOTE: "Queries return in under 300 ms at the 95th percentile on workspaces up to 100,000 documents, measured on our standard benchmark corpus."
+WHY: The claim is framed as a correctness guarantee, but “standard benchmark corpus” is not enough to know what was actually measured.
+
+[severity med] Compatibility claim may be overbroad for self-hosted upgrades — qualify it by supported deployment paths or state tested source versions explicitly.
+QUOTE: "Self-hosted customers can upgrade in place from any 2.x version"
+WHY: “Any 2.x version” is an expansive claim that can be false if older 2.x installs have schema, plugin, or config differences not covered here.
+
+VERDICT — Not genuinely good as-is for correctness; the content is clear, but several claims are too temporal or broad to be safely true without tighter wording.

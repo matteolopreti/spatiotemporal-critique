@@ -1,0 +1,8 @@
+1. PRESERVE — `clamp` has clear inclusive bound behavior and rejects `low > high` with a useful `ValueError`.
+
+2. ISSUES — [severity med] `clamp_all` silently accepts an invalid range when `values` is empty — validate `low > high` at the start of `clamp_all`, before iterating.
+QUOTE: """Clamp every value in `values` to [low, high], preserving order."""
+QUOTE: "return [clamp(v, low, high) for v in values]"
+WHY: Delegating validation to per-item `clamp` means no validation runs for an empty iterable, so `clamp_all([], 10, 1)` returns `[]` instead of raising.
+
+VERDICT — not good as-is; the scalar function is correct, but the collection wrapper has an inconsistent invalid-range edge case.

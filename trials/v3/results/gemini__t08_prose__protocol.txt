@@ -1,0 +1,10 @@
+1. PRESERVE
+* **Quantified performance metrics:** Specifying a "30% reduction on ledgers with more than 50,000 entries" provides credible, verifiable data rather than vague "faster performance" claims.
+* **Concrete feature descriptions:** Explaining that the CSV preview shows "the first ten rows" and the PDF fits "twelve months on one page" gives users exact, practical expectations.
+* **Actionable benefit statements:** Explaining *why* the CSV preview matters ("so mis-mapped columns can be corrected up front") directly addresses user pain points.
+
+2. ISSUES
+* [severity low] restrictive mobile security terminology — Replace "fingerprint unlock" with "biometric unlock" or "biometric authentication" to accurately cover modern iOS (Face ID) and Android face-unlock hardware.
+* [severity low] internal jargon in performance claim — Remove "measured on our standard benchmark set." This phrase adds no value to end-users; the 50,000-entry metric is already sufficiently concrete.
+
+VERDICT — Genuinely good as-is; it is exceptionally clear, benefit-focused, and free of typical software-release fluff, requiring only minor terminology updates.

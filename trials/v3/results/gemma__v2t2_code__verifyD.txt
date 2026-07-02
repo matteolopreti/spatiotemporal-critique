@@ -1,0 +1,2 @@
+1: KEEP
+2: DROP — simple client design; hashing is necessary without cache

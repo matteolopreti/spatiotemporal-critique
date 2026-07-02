@@ -1,0 +1,25 @@
+1. PRESERVE
+- The use of a shadow execution mode for Phase B (Invoice) and Phase C (Payments) to compare outputs field-by-field and simulate processor calls before routing live traffic.
+- The requirement of a clean audit trail, preserving source identifiers (system, table, primary key, batch ID) on all migrated rows to allow reconciliation.
+- The rollback capability at the facade level supporting per-capability, per-cohort, and per-tenant routing without requiring monolith redeployments.
+
+2. ISSUES
+[severity high] Contradictory data migration logic that breaks idempotency.
+QUOTE: "The migration script is idempotent and safely re-runnable, so failed batches can be retried without creating duplicate records or changing previously migrated financial facts."
+QUOTE: "Before final cutover, run the historical migration process for the selected cohort by inserting transformed records into each target service table, preserving source IDs for traceability but appending new rows for every source record processed during the batch."
+WHY: Appending new rows for every source record processed during a batch run directly contradicts the claim of idempotency, as retrying a failed or partial batch will result in duplicate records.
+FIX: Replace the appending behavior with an upsert (insert or update/ignore on conflict) strategy keyed on the preserved source system and source primary key.
+
+[severity med] Circular/deadlocked phase dependencies.
+QUOTE: "Phase B cannot start until the canonical customer-balance event schema produced by Phase D has been accepted by finance operations and implemented by downstream consumers."
+QUOTE: "Confirm Phase D starts only after Phase B invoice extraction has completed production traffic promotion and finance has approved invoice parity reports."
+WHY: This creates a circular dependency where Phase B cannot start until Phase D's outputs are implemented, but Phase D cannot start until Phase B is fully promoted.
+FIX: Decouple Phase B's initiation from Phase D's downstream implementation, requiring only the static schema definition of Phase D to be finalized rather than fully implemented by downstream consumers.
+
+[severity high] Data loss/payment failure risk during Phase C rollback due to token isolation.
+QUOTE: "The Payment Service will own gateway token usage, payment intent creation, retry scheduling, authorization capture, and processor response normalization."
+QUOTE: "For Phase C, rollback means stopping live payment execution through the Payment Service and sending all payment attempts through the monolith gateway adapter."
+WHY: If the Payment Service owns gateway token usage, any new payment methods tokenized during its live run will be inaccessible to the monolith adapter upon rollback, causing failed payments.
+FIX: Explicitly state that the payment gateway token vault must remain shared, or that tokens must be dual-written to both the monolith and the Payment Service databases during Phase C.
+
+VERDICT — Not genuinely good as-is because it contains a critical logical contradiction regarding migration idempotency, a circular phase dependency that blocks execution, and a high-risk rollback gap for payment tokens.

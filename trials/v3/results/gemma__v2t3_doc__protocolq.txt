@@ -1,0 +1,25 @@
+1. PRESERVE
+*   The architectural split (Collection -> Buffering -> Processing -> Storage) is standard and correct for this use case.
+*   The choice of Vector for collection and Kafka for buffering is industry-standard for high-throughput log pipelines.
+*   The tiered storage strategy (Hot/Warm/Cold) is the correct way to manage OpenSearch costs.
+
+2. ISSUES
+[severity high] The primary capacity calculation contains a 1,000x mathematical error in throughput units.
+QUOTE: "Assuming an average uncompressed log event size of 2 KB, the pipeline must be provisioned to handle a peak throughput of 100 GB per second at the ingestion tier."
+WHY: 50,000 events/sec * 2 KB = 100 MB/s (or 0.1 GB/s), not 100 GB/s. This error invalidates all subsequent infrastructure sizing.
+QUOTE: "the Kafka buffer requires a minimum of 15 partitions per topic to distribute the write load evenly across brokers without exceeding the disk I/O limits"
+WHY: If the system actually handled 100 GB/s, 15 partitions would be physically impossible; if it handles 100 MB/s, 15 is arbitrary and not tied to consumer parallelism.
+
+[severity high] The proposed hardware cannot support the stated retention requirements.
+QUOTE: "The OpenSearch cluster will require 12 data nodes, each provisioned with 1.5 TB of NVMe storage... to handle the daily indexing volume while maintaining a healthy 30% storage headroom"
+WHY: At even the corrected rate (100 MB/s), daily ingestion is ~8.6 TB; 12 nodes of 1.5 TB provide only 18 TB total, which cannot hold 7 days of "Hot" data (~60 TB) as required in Section 5.
+
+[severity med] The durability guarantee lacks the necessary configuration requirements to be valid.
+QUOTE: "Zero unrecoverable log messages once acknowledged by the Kafka buffering layer."
+WHY: This is an impossible claim without specifying `acks=all` and `min.insync.replicas`, as the default Kafka behavior allows for data loss during leader failover.
+
+[severity low] Partitioning logic is based on the wrong bottleneck.
+QUOTE: "15 partitions per topic to distribute the write load evenly across brokers without exceeding the disk I/O limits"
+WHY: In a Kafka-based architecture, partition count is primarily driven by the need for consumer parallelism (number of concurrent Aether-Consumer instances), not just disk I/O limits.
+
+VERDICT — Not good as-is; the capacity planning section contains fundamental mathematical errors that would lead to massive under-provisioning and system failure if implemented.

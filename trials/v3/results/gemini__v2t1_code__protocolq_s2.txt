@@ -1,0 +1,23 @@
+1. PRESERVE
+* The in-memory caching structure (`_cache_get` and `_cache_put`) which avoids redundant API calls for directory fetches.
+* The merge logic in `merge_profiles` that gracefully handles cases where a local edit does not exist in the remote directory.
+* The clean separation of concerns between parsing, merging, and syncing.
+
+2. ISSUES
+* [severity high] Cache expiration logic is inverted, causing cache entries to never expire — change the condition to `time.time() - stored_at < CACHE_TTL_SECONDS`.
+QUOTE: "    if stored_at - time.time() < CACHE_TTL_SECONDS:"
+WHY: Subtracting the current time from a past timestamp yields a negative number, which is always less than CACHE_TTL_SECONDS, meaning expired cache entries are never evicted.
+
+* [severity high] Timezone mismatch in grace period calculation — keep the parsed datetime timezone-aware and compare it to `datetime.now(timezone.utc)`.
+QUOTE: "    edited = datetime.fromisoformat(local_edit_ts).replace(tzinfo=None)"
+QUOTE: "    return datetime.now() - edited < timedelta(hours=grace_hours)"
+WHY: Stripping the timezone from the UTC timestamp and comparing it to the local system time returned by `datetime.now()` introduces timezone offset errors in the grace period calculation.
+
+* [severity med] Uncaught exceptions in `parse_remote_profiles` can cause crashes on invalid payloads — catch `TypeError` and `AttributeError` in the `except` block.
+QUOTE: "    try:"
+QUOTE: "        body = json.loads(payload)"
+QUOTE: "        return [p for p in body.get("profiles", []) if p.get("id")]"
+QUOTE: "    except (ValueError, KeyError) as exc:"
+WHY: If the payload is `None` (raising `TypeError`) or parsed as a JSON list instead of a dictionary (raising `AttributeError`), the function will crash because these exceptions are not caught.
+
+VERDICT — Not good as-is, because critical bugs in cache expiration and timezone handling will cause stale data to persist indefinitely and merge conflicts to resolve incorrectly depending on the host's local timezone.

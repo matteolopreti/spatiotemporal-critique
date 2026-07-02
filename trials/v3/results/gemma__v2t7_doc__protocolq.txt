@@ -1,0 +1,19 @@
+1. PRESERVE
+*   Search operator syntax (exact phrases, exclusion, author filters).
+*   The 300ms p95 latency metric for 100k documents.
+*   Review workflow mechanics (side-by-side diffs, inline comments, partial approvals via templates).
+*   Admin activity log details (sign-ins, permissions, publishing, exports) and the 180-day retention policy.
+*   The seat reassignment logic (ownership transfer with history preservation).
+*   The specific bug fixes listed in "Performance and fixes."
+*   Compatibility guarantees for 2.x versions and API persistence.
+
+2. ISSUES
+[med] Ambiguity in Search performance metrics — Clarify if 300ms includes result set retrieval or just query execution time.
+QUOTE: "Queries return in under 300 ms at the 95th percentile on workspaces up to 100,000 documents, measured on our standard benchmark corpus."
+WHY: Without specifying whether this refers to server-side query execution or total round-trip/rendering time, the metric is difficult for users to interpret accurately.
+
+[med] Ambiguity in "untouched" logic — Define what constitutes an "untouched" section.
+QUOTE: "a returned draft keeps approvals for untouched sections."
+WHY: The text does not clarify if "untouched" is determined by a diffing algorithm or manual user flagging, which could lead to inconsistent behavior during the review process.
+
+VERDICT — This is a high-quality, professional release note that provides specific technical details and clear value propositions; however, it requires slight clarification on performance metrics and logic definitions to be fully actionable for power users.

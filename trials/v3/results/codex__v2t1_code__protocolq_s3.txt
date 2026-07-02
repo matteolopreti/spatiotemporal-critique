@@ -1,0 +1,33 @@
+1. PRESERVE — clear separation of parse, grace check, merge, and sync; remote profiles are copied before merging via `dict(p)`, so normal local edits do not mutate fetched profile dicts.
+
+2. ISSUES
+
+[severity high] cache expiry is inverted, so cached remote profiles effectively never expire — change the condition to `time.time() - stored_at < CACHE_TTL_SECONDS`.
+
+QUOTE: `if stored_at - time.time() < CACHE_TTL_SECONDS:`
+
+WHY: `stored_at - time.time()` is negative immediately after caching, so it is always less than `300` and returns stale cache forever.
+
+[severity high] parse failures can push an empty profile list and overwrite good remote state — make parse failure abort sync instead of returning `[]`, or return a typed error and skip `push_profiles`.
+
+QUOTE: `return []`
+
+QUOTE: `client.push_profiles(merged)`
+
+WHY: when parsing fails, `remote` becomes empty, `merged` may become empty, and the sync still pushes that result.
+
+[severity med] grace-window comparison mishandles UTC timestamps by stripping timezone and comparing against local naive time — keep aware datetimes and compare to `datetime.now(timezone.utc)`.
+
+QUOTE: `edited = datetime.fromisoformat(local_edit_ts).replace(tzinfo=None)`
+
+QUOTE: `return datetime.now() - edited < timedelta(hours=grace_hours)`
+
+WHY: the doc says the timestamp is UTC, but the code discards the offset and compares it to local wall time.
+
+[severity med] malformed but valid JSON can crash outside the intended parse warning path — validate that `body` is a dict, `profiles` is a list, and each profile is a dict before calling `.get`.
+
+QUOTE: `return [p for p in body.get("profiles", []) if p.get("id")]`
+
+WHY: if `body` is a list/string or any profile entry is not a dict, `.get` raises `AttributeError`, which is not caught.
+
+VERDICT — not good as-is; the cache bug and fail-open parse behavior can cause materially incorrect sync results.

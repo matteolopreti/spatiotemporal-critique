@@ -1,0 +1,26 @@
+1. PRESERVE — Clear incident scope, customer-visible symptoms, affected endpoint, impact estimate, and action-item time horizons. The timeline gives enough timestamps to audit causality, which is valuable and must be retained.
+
+2. ISSUES — 
+
+[severity high] The stated root cause contradicts the timeline — reconcile the chronology by moving the `AuthService` deployment before first symptoms, or change root cause to a pre-existing connection pool configuration problem.
+QUOTE: "The incident began at approximately 13:40 UTC"
+QUOTE: "14:30 UTC - Deployment of the `AuthService` update v2.1.0 is completed successfully."
+QUOTE: "The primary driver of this incident was the deployment of the `AuthService` update v2.1.0 at 14:30 UTC, which caused the initial spike in transaction failures"
+WHY: A 14:30 deployment cannot cause failures that began at 13:40.
+
+[severity high] The timeline labels a mitigation as the triggering event — rename it as mitigation, or identify the actual trigger before 13:40.
+QUOTE: "14:05 UTC - SRE team initiates a manual configuration change to the load balancer to reroute traffic to a secondary cluster (Triggering Event)."
+QUOTE: "13:40 UTC - First customer reports of transaction failures and \"Gateway Timeout\" errors are received by the Support team."
+WHY: An action taken 25 minutes after customer failures started cannot be the triggering event.
+
+[severity med] The remediation story is inconsistent — say whether production was fixed by rollback, config change, or both, and add the completed rollback to the timeline if it happened.
+QUOTE: "15:10 UTC - Configuration fix is deployed to production."
+QUOTE: "**Immediate:** Roll back the `AuthService` configuration to the previous stable version and verify connection pool stability (Completed)."
+WHY: The postmortem names two different completed fixes without explaining their order or relationship.
+
+[severity med] Detection was customer-led, but the action items do not directly address that gap — add an action item for earlier symptom-based detection on checkout failures, gateway timeouts, and transaction success rate.
+QUOTE: "13:40 UTC - First customer reports of transaction failures and \"Gateway Timeout\" errors are received by the Support team."
+QUOTE: "13:55 UTC - Monitoring systems trigger alerts for elevated 5xx error rates on the `/v1/charge` endpoint."
+WHY: Customers detected the incident 15 minutes before monitoring did, so alerting only on connection-pool metrics is incomplete.
+
+VERDICT — Not good as-is; the causal chain is internally inconsistent, so the postmortem cannot be trusted until the timeline, trigger, and remediation are reconciled.

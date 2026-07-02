@@ -1,0 +1,8 @@
+1. PRESERVE — `clamp` correctly enforces inclusive bounds, preserves in-range values, and raises `ValueError` for `low > high`.
+
+2. ISSUES —
+[severity med] `clamp_all([], 10, 1)` silently returns `[]` instead of rejecting the invalid range — validate `low > high` once at the start of `clamp_all` before the comprehension.
+QUOTE: "return [clamp(v, low, high) for v in values]"
+WHY: With an empty iterable, the comprehension never calls `clamp`, so the invalid range check is skipped.
+
+VERDICT — not genuinely good as-is; the core single-value function is solid, but the collection wrapper has a real edge-case correctness bug.

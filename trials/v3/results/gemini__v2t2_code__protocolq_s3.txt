@@ -1,0 +1,8 @@
+(seat unavailable: HTTP 503 from https://generativelanguage.googleapis.com/v1beta/openai/chat/completions — [{
+  "error": {
+    "code": 503,
+    "message": "The service is currently unavailable.",
+    "status": "UNAVAILABLE"
+  }
+}
+])

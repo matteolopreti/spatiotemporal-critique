@@ -1,0 +1,15 @@
+1. PRESERVE — specific release date, concrete feature list, benchmark scope, pricing status, and platform list.
+
+2. ISSUES
+[severity med] relative availability wording becomes incorrect after publication — replace “today” with an absolute availability date.
+QUOTE: "available on web, Windows, macOS, iOS, and Android today."
+WHY: “today” is relative, so the claim becomes ambiguous or false once separated from its publication date.
+
+[severity med] the performance claim is not reproducible — add baseline version, metric, hardware, dataset size, and before/after timings.
+QUOTE: "reduced report generation time by roughly 30%"
+QUOTE: "measured on our standard benchmark set"
+WHY: The claim is quantitative but does not define the benchmark well enough to verify.
+
+ABSTAIN: factual truth of the release date, features, pricing, and platform rollout — no primary Ledgerly changelog, benchmark report, store listing, or source material was provided.
+
+VERDICT — not genuinely good as-is for correctness; it is clear, but key factual claims are either unverifiable or time-relative.

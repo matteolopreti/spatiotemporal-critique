@@ -1,0 +1,7 @@
+1. PRESERVE — `clamp` correctly enforces inclusive lower and upper bounds, preserves in-range values unchanged, and raises a clear `ValueError` when `low > high`.
+
+2. ISSUES — [severity med] `clamp_all` silently accepts an invalid range when `values` is empty — validate `low > high` once at the start of `clamp_all` before the list comprehension.
+QUOTE: "return [clamp(v, low, high) for v in values]"
+WHY: An empty iterable never calls `clamp`, so `clamp_all([], 5, 1)` returns `[]` instead of rejecting the invalid range.
+
+VERDICT — not genuinely good as-is, because the batch helper has an edge-case correctness hole inconsistent with `clamp`.

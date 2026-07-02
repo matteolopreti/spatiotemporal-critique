@@ -1,0 +1,26 @@
+1. PRESERVE — Simple `Job` model with explicit `job_id`, callable, args/kwargs, and status. The worker marks a job `RUNNING` before executing it, which prevents duplicate execution by the same scheduler loop. `batch_size <= 0` is rejected.
+
+2. ISSUES
+
+[severity high] `submit_batches` silently drops any jobs that do not fill a complete batch — iterate in steps of `batch_size` over the full list.
+QUOTE: "num_batches = len(jobs) // batch_size"
+QUOTE: "for i in range(num_batches):"
+WHY: Integer division excludes the remainder, so `len(jobs) == 5` and `batch_size == 2` submits only 4 jobs.
+
+[severity high] `cancel_job` can permanently deadlock the scheduler when the job id is missing — replace manual acquire/release with `with self._lock:`.
+QUOTE: "self._lock.acquire()"
+QUOTE: "if job_id not in self._jobs:"
+QUOTE: "raise KeyError(f\"Job {job_id} does not exist in the registry.\")"
+WHY: The exception path raises while the lock is still held, blocking future submissions, cancellations, and worker progress.
+
+[severity med] `start()` can create multiple worker threads for the same scheduler — make start idempotent under the lock or reject repeated starts.
+QUOTE: "self._running = True"
+QUOTE: "self._executor_thread = threading.Thread(target=self._worker_loop, daemon=True)"
+QUOTE: "self._executor_thread.start()"
+WHY: There is no guard against calling `start()` twice, which creates competing workers over the same in-memory registry.
+
+[severity med] Failed jobs stay in `_jobs` forever with no retrieval API — either remove them after recording failure elsewhere or add a result/status API with cleanup.
+QUOTE: "job_to_run.status = \"FAILED\""
+WHY: The failed job is never deleted, and the class exposes no way to inspect or drain failed jobs, so failures accumulate silently.
+
+VERDICT — not genuinely good as-is; the scheduler has real correctness bugs around batching, locking, lifecycle, and failure handling.

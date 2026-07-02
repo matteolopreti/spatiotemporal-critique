@@ -1,0 +1,19 @@
+1. PRESERVE
+- The Rollback Strategy: Specifically the requirement that ledger entries remain immutable and that rollback involves marking projections as inactive rather than deleting records.
+- Success Criteria: The focus on "no material variance in invoice totals" and "clean audit trail for every customer balance mutation."
+- Data Migration Traceability: The requirement to include source system, source table, source primary key, migration batch ID, and migration timestamp on every migrated row.
+
+2. ISSUES
+[High] Circular/Delayed Dependency — Phase B (Invoice) is blocked by a schema produced in Phase D (Ledger).
+QUOTE: "Phase B cannot start until the canonical customer-balance event schema produced by Phase D has been accepted by finance operations and implemented by downstream consumers."
+WHY: This creates a hard dependency on a future phase, which may stall the Invoice Service development; it should instead depend on a mocked or internal balance check to allow for independent validation.
+
+[High] Snapshot Migration Gap — The plan relies on static snapshots without a defined Change Data Capture (CDC) mechanism.
+QUOTE: "The migration job will read from a consistent snapshot of the monolith database, transform records into service-owned schemas, and write them into service databases with source identifiers preserved."
+WHY: For an active billing system, a snapshot is immediately stale; the plan lacks a strategy to capture and apply mutations that occur between the snapshot time and the final cutover.
+
+[Med] Payment Shadow Mode Limitations — Simulated responses do not validate live gateway behavior.
+QUOTE: "During shadow mode, it will simulate processor calls using recorded gateway responses and compare decisions with the monolith."
+WHY: Recorded responses cannot validate real-time network latency, specific provider error codes, or complex flows like 3D Secure/MFA that occur during a live handshake.
+
+VERDICT — This is a high-quality, professional migration plan, but it contains a significant architectural bottleneck in Phase B and lacks a delta-sync strategy for data migration.

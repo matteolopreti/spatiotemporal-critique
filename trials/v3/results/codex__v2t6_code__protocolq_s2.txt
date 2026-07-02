@@ -1,0 +1,30 @@
+1. PRESERVE — simple `Job` object model, lock-protected registry access in most paths, daemon background worker, validation for non-positive batch size, and exception isolation around job execution.
+
+2. ISSUES
+
+[severity high] `cancel_job` can permanently deadlock the scheduler when cancelling a missing job — use `with self._lock:` or `try/finally` so the lock is always released before raising.
+QUOTE: "self._lock.acquire()"
+QUOTE: "raise KeyError(f\"Job {job_id} does not exist in the registry.\")"
+WHY: The code raises after manually acquiring the lock without releasing it, so all future lock users can block forever.
+
+[severity high] `submit_batches` silently drops jobs in a partial final batch — iterate over `range(0, len(jobs), batch_size)` so every job is submitted.
+QUOTE: "num_batches = len(jobs) // batch_size"
+QUOTE: "for i in range(num_batches):"
+WHY: Floor division only counts full batches, so leftover jobs after the last full batch are never submitted.
+
+[severity high] duplicate `job_id` submission can delete or corrupt another job’s state — reject duplicate IDs or store queued job instances in a real queue rather than deleting by ID after execution.
+QUOTE: "self._jobs[job.job_id] = job"
+QUOTE: "del self._jobs[job_to_run.job_id]"
+WHY: A new job with the same ID can overwrite the registry entry while the old job is running, and the old job later deletes that ID.
+
+[severity med] `start()` is not idempotent and can launch multiple worker threads — guard against repeated starts or join/replace the existing worker safely.
+QUOTE: "self._running = True"
+QUOTE: "self._executor_thread = threading.Thread(target=self._worker_loop, daemon=True)"
+QUOTE: "self._executor_thread.start()"
+WHY: Every call creates another worker, which breaks the scheduler’s implied single-worker behavior and leaves only the newest thread tracked.
+
+[severity med] failed jobs remain in `_jobs` forever and are never retried or removed — either remove them after marking failed or add an explicit failed-job inspection API.
+QUOTE: "job_to_run.status = \"FAILED\""
+WHY: The worker only picks `PENDING` jobs, so failed jobs accumulate in the registry with no visible lifecycle path.
+
+VERDICT — not good as-is; the core shape is fine, but it has real correctness bugs around batching, locking, duplicate IDs, and worker lifecycle.

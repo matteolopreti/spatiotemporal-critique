@@ -20,4 +20,8 @@ All gates ran, pre-registered, on two batteries (TRIAL.md):
 
 **Decision: no protocol-as-harness.** The shipped design — plain probe-certified seat contracts + blind multi-vendor panel + owner-side synthesis — is the measured optimum. The version line stays 4.x until a *new mechanism* earns a major bump through its own pre-registered trial; a negative result honestly recorded is worth more than a version number. The **orchestrator contract** (PROTOCOL.md) stays as the standing spec for anyone who wants to run the protocol from another model anyway — with the empirical warning attached. Synthesis ownership stays with the owner-side model — the question is now settled by data rather than doctrine.
 
-**Open, unblocking nothing:** battery v3 (hard enough to discriminate *between* strong seats on recall — needed only for seat-ranking claims, not for the architecture) · whole-repo-scale measurement.
+## The false-positive program — ran and closed (2026-07-03): two levers shipped, the goal falsified
+
+Pre-registered from a three-lineage research diff, run cumulatively on battery v3 (TRIAL.md): the **quote gate** and the **drop-biased cross-seat verifier** cut invented findings **5.6× at zero panel recall cost** and ship in v4.15; self-consistency voting (not significant) and k≥2 intersection (recall-destructive) failed their gates and do not. The **≤0.5-invented-per-review goal was falsified by its own stop rule**: the residual class — quotes that are real but don't entail the defect — measures 1.6 per clean panel review (LCB 0.80), and no verified technique removes it under the stdlib constraint. Negative shipped, per the harness precedent.
+
+**Open, unblocking nothing:** the entailment successor (deterministic-ish claim-support checking; the sealed battery-v3 certification set — never opened — waits for it) · whole-repo-scale measurement.

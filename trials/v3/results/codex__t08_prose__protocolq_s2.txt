@@ -1,0 +1,12 @@
+1. PRESERVE — Clear release-note structure: date, theme, feature changes, performance claim, platform/availability. Keep the concrete user-facing examples.
+
+2. ISSUES — [severity high] The core release facts are unverifiable from the supplied work — add a source link, internal changelog ID, or test/release evidence for the date, version, platforms, and feature claims.
+QUOTE: "Ledgerly 1.8 was released on March 12, 2025."
+QUOTE: "Ledgerly 1.8 is a free update for all current subscribers and is available on web, Windows, macOS, iOS, and Android today."
+WHY: These are specific factual claims, but the work provides no evidence, and I cannot confirm them from the supplied text.
+
+[severity med] The performance claim is too vague to audit — name the benchmark, baseline version, exact metric, sample size, and measured before/after values.
+QUOTE: "Performance work in this release reduced report generation time by roughly 30% on ledgers with more than 50,000 entries, measured on our standard benchmark set."
+WHY: “Roughly 30%” and “standard benchmark set” are not enough for a correctness review because the measurement cannot be reproduced or checked.
+
+VERDICT — Not genuinely good as-is for correctness; it reads cleanly, but the key factual claims need provenance and measurable detail.

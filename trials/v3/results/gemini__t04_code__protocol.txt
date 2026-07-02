@@ -1,0 +1,16 @@
+1. PRESERVE
+* **Explicit Range Validation:** Raising a `ValueError` when `low > high` prevents silent bugs and undefined behavior.
+* **Docstring Clarity:** The docstrings clearly state the behavior, inclusive boundaries, and exceptional cases.
+
+2. ISSUES
+* [severity med] redundant range validation in `clamp_all` — Calling `clamp` inside the list comprehension repeats the `low > high` check $N$ times, causing $O(N)$ redundant comparisons. Validate the range once at the start of `clamp_all`, then use a fast inline expression or a non-validating helper for the loop:
+  ```python
+  def clamp_all(values, low, high):
+      """Clamp every value in `values` to [low, high], preserving order."""
+      if low > high:
+          raise ValueError(f"invalid range: low ({low}) > high ({high})")
+      return [min(max(v, low), high) for v in values]
+  ```
+
+VERDICT
+Genuinely good as-is for single values, but needs the loop-validation optimization in `clamp_all` to be production-ready for large datasets.

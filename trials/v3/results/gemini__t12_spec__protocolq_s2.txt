@@ -1,0 +1,20 @@
+1. PRESERVE
+* **At-least-once delivery contract**: Requiring a 2xx response for acknowledgment and providing a mandatory idempotency key (`X-Relay-Id`) ensures reliability without risking silent data loss.
+* **Payload size capping**: Restricting payloads to 256 KB and offloading larger events to object storage references prevents worker memory exhaustion and network bottlenecks.
+
+2. ISSUES
+
+[severity high] Head-of-line blocking on retries — Introduce a dedicated delay mechanism (such as a database-backed scheduler or a delayed-message exchange) for retries instead of holding or requeuing them directly on the main durable queue.
+QUOTE: "Producers publish events to a durable queue; delivery workers consume the queue, sign each payload, and POST it to the subscriber's URL."
+QUOTE: "Failed deliveries retry with exponential backoff — 1, 2, 4, 8, up to a maximum interval of 15 minutes — for at most 24 hours, after which the event moves to a dead-letter queue that operators can inspect and replay."
+WHY: Consuming directly from a standard consumer group queue and retrying for up to 24 hours will block consumer partitions or flood the main queue, starving healthy subscribers.
+
+[severity med] Lack of jitter in backoff — Add randomized jitter to the exponential backoff calculation.
+QUOTE: "Failed deliveries retry with exponential backoff — 1, 2, 4, 8, up to a maximum interval of 15 minutes"
+WHY: Pure exponential backoff without randomness causes synchronized retry storms (thundering herd) that can overwhelm both recovering subscriber endpoints and the delivery workers.
+
+[severity low] Ambiguous backoff time units — Explicitly state the time unit for the initial backoff sequence.
+QUOTE: "Failed deliveries retry with exponential backoff — 1, 2, 4, 8, up to a maximum interval of 15 minutes"
+WHY: The sequence "1, 2, 4, 8" lacks a unit, leaving it ambiguous whether the initial retries occur in seconds or minutes.
+
+VERDICT — Not genuinely good as-is, because retrying directly out of a shared consumer-group queue for up to 24 hours will cause severe head-of-line blocking for healthy webhooks.

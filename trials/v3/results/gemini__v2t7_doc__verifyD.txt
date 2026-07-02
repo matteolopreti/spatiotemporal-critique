@@ -1,0 +1,2 @@
+1: DROP — Release notes do not require technical storage specifications.
+2: DROP — Exact phrase rules cover multi-word names.

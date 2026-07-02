@@ -1,0 +1,26 @@
+1. PRESERVE — Clear incident scope, affected endpoint, customer-facing symptoms, duration, impact estimate, and concrete follow-up categories. The postmortem correctly focuses on availability rather than security and includes useful technical signals like `ConnectionTimeoutExceptions`, pool saturation, and wait-time alerting.
+
+2. ISSUES —
+
+[severity high] The root cause timing is impossible — fix the timeline or redefine `AuthService` v2.1.0 as an exacerbating factor, not the initial cause.
+QUOTE: "13:40 UTC - First customer reports of transaction failures and "Gateway Timeout" errors are received by the Support team."
+QUOTE: "14:30 UTC - Deployment of the `AuthService` update v2.1.0 is completed successfully."
+QUOTE: "The primary driver of this incident was the deployment of the `AuthService` update v2.1.0 at 14:30 UTC, which caused the initial spike in transaction failures"
+WHY: A deployment completed at 14:30 UTC cannot cause the initial failures reported at 13:40 UTC unless the deployment timing or causality is wrong.
+
+[severity high] The timeline labels the mitigation as the triggering event — change the 14:05 load balancer change to “mitigation attempt” and add the actual trigger.
+QUOTE: "14:05 UTC - SRE team initiates a manual configuration change to the load balancer to reroute traffic to a secondary cluster (Triggering Event)."
+QUOTE: "The primary driver of this incident was the deployment of the `AuthService` update v2.1.0 at 14:30 UTC"
+WHY: The same postmortem identifies two different triggering causes, and one of them occurs after the incident has already begun.
+
+[severity med] The completed action item is not supported by the timeline — add the rollback event, or reword the action item to match the documented production fix.
+QUOTE: "15:10 UTC - Configuration fix is deployed to production."
+QUOTE: "**Immediate:** Roll back the `AuthService` configuration to the previous stable version and verify connection pool stability (Completed)."
+WHY: The timeline records a configuration fix, not a rollback, so the completed action item claims an action the incident record does not show.
+
+[severity med] The impact numbers are presented without measurement basis — add the data source, query/window, and confidence level.
+QUOTE: "The incident affected approximately 15% of all transaction attempts during the reported window."
+QUOTE: "We estimate that over 4,200 transactions failed to complete"
+WHY: These figures may be correct, but without the source or calculation method they are not auditable in a correctness-focused postmortem.
+
+VERDICT — Not good as-is; the core chronology contradicts the claimed root cause, so the postmortem is not reliable until causality and timing are reconciled.

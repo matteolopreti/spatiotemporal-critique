@@ -1,0 +1,29 @@
+1. PRESERVE — what is working and must not be lost (concrete)
+- The `Transport` Protocol provides a clean abstraction for swapping storage backends (e.g., S3, FTP, Local).
+- The `FileRecord` and `ChangeSet` dataclasses correctly model the domain without unnecessary complexity.
+- The `_sha256_file` implementation uses a streaming buffer (1MB) to ensure memory efficiency when hashing large files.
+- The use of `pathlib.Path` for all path manipulations ensures cross-platform compatibility for separators and path joining.
+
+2. ISSUES — the highest-leverage problems, each as: [severity high/med/low] the problem — a concrete fix.
+[severity high] The `_page_bounds` logic contains a mathematical error that causes the final item of any perfectly divisible batch to be skipped.
+QUOTE: "if end == total and total % page_size == 0:
+    end -= 1"
+WHY: If `total` is 100 and `page_size` is 50, the second loop calculates `end` as 100, identifies it as a perfect multiple, and reduces it to 99, meaning the file at index 99 is never included in any batch.
+FIX: Remove the `if` block entirely; the `min(start + page_size, total)` logic already correctly handles the remainder of the collection.
+
+[severity med] The `scan` method calculates a full SHA256 hash for every file on every execution, which will cause significant latency on large directories.
+QUOTE: "sha256=self._sha256_file(path),"
+WHY: File syncing should ideally only hash files if the `mtime_ns` or `size` has changed since the last sync to avoid redundant I/O.
+FIX: Modify `scan` to only record metadata (size, mtime), and update `diff_remote_manifest` to trigger a hash calculation only when those primary metrics differ from the remote manifest.
+
+[severity low] The client will crash with a `FileNotFoundError` if a file is deleted or moved by another process between the `scan` phase and the `_sha256_file` call.
+QUOTE: "handle = path.open(\"rb\")"
+WHY: There is no error handling for transient files that may disappear during the execution of the sync loop.
+FIX: Wrap the `path.open` call in a `try/except FileNotFoundError` block and return `EMPTY_SHA256` or skip the file if it disappears.
+
+[severity low] The `_record_changed` method will raise a `TypeError` if the remote manifest contains a key for "size" but the value is `None`.
+QUOTE: "int(remote.get(\"size\", -1)) != local.size"
+WHY: `remote.get("size", -1)` only returns `-1` if the key is missing; if the key exists but the value is `None`, `int(None)` will raise a `TypeError`.
+FIX: Use `int(remote.get("size") or -1)` to handle both missing keys and null values safely.
+
+VERDICT — This is not good as-is because of the logic error in `_page_bounds` which prevents the tool from syncing all files in certain directory sizes.

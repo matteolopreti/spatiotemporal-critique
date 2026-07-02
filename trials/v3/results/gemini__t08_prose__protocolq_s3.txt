@@ -1,0 +1,16 @@
+1. PRESERVE
+* **Quantified Performance Metrics:** The inclusion of specific benchmarks ("reduced report generation time by roughly 30% on ledgers with more than 50,000 entries") adds high credibility compared to vague "performance improvements" claims.
+* **Benefit-Driven Feature Descriptions:** Explaining *why* a feature matters (e.g., "so mis-mapped columns can be corrected up front") instead of just listing the technical change.
+
+2. ISSUES
+[severity low] Outdated biometric terminology — update the copy to reflect modern mobile authentication standards.
+QUOTE: "adds fingerprint unlock on supported devices."
+WHY: Modern iOS and Android devices primarily use facial recognition or unified biometric APIs, making a specific reference to only "fingerprint unlock" sound outdated.
+FIX: Change "fingerprint unlock" to "biometric unlock (including fingerprint and facial recognition)".
+
+[severity low] Unrealistic mobile UX implication — clarify how CSV importing is handled on small screens.
+QUOTE: "The mobile app receives the same importer improvements"
+WHY: Directly importing and mapping CSV columns is an extremely high-friction task on mobile screens, and implying the desktop interface was ported directly suggests a poor user experience.
+FIX: Clarify that the mobile app supports viewing and confirming imports, or specify that the UI has been responsive-optimized for mobile screens.
+
+VERDICT — Genuinely good as-is, requiring only minor terminology updates to sound fully modern and polished.

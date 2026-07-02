@@ -1,0 +1,23 @@
+## PRESERVE
+
+* **Shadow-Mode Validation Strategy:** The requirement to run services in shadow mode (e.g., comparing draft invoices field-by-field for two billing cycles and simulating processor calls with recorded gateway responses) ensures safety before live promotion.
+* **Granular Facade Routing:** The design of the routing layer to support per-capability, per-cohort, and per-tenant routing, enabling isolated rollbacks without monolith redeployments.
+* **Audit-Safe Historical Data Handling:** The decision to keep historical data read-only in the monolith and prohibit services from mutating migrated historical invoices except through explicit adjustment records.
+
+## ISSUES
+
+### [severity high] Circular phase dependency between Phase B and Phase D
+QUOTE: "Phase B cannot start until the canonical customer-balance event schema produced by Phase D has been accepted by finance operations and implemented by downstream consumers."
+QUOTE: "Confirm Phase D starts only after Phase B invoice extraction has completed production traffic promotion and finance has approved invoice parity reports."
+WHY: These two requirements create a logical deadlock where Phase B is blocked waiting for a Phase D deliverable, while Phase D is blocked waiting for Phase B's completion.
+FIX: Move the definition and downstream implementation of the canonical customer-balance event schema into Phase A (Foundation), decoupling the schema contract from the execution of Phase D.
+
+### [severity high] Contradictory migration logic causing duplicate records on retry
+QUOTE: "The migration script is idempotent and safely re-runnable, so failed batches can be retried without creating duplicate records or changing previously migrated financial facts."
+QUOTE: "Before final cutover, run the historical migration process for the selected cohort by inserting transformed records into each target service table, preserving source IDs for traceability but appending new rows for every source record processed during the batch."
+WHY: Unconditionally appending new rows for every source record during the cutover batch run directly violates the idempotency guarantee and will result in duplicate financial records if the batch is retried.
+FIX: Revise the cutover checklist to enforce idempotent upserts or deduplicated inserts based on the preserved source IDs instead of appending new rows.
+
+## VERDICT
+
+NOT genuinely good as-is, because it contains a circular phase dependency that blocks project execution and a critical technical contradiction in the data migration path that risks database corruption via duplicate financial records.

@@ -1,0 +1,14 @@
+1. PRESERVE
+* **Value-driven feature explanations:** Explaining the practical utility of a feature (e.g., "so mis-mapped columns can be corrected up front") rather than just listing the technical change.
+* **Quantified performance metrics:** Specifying the exact performance improvement ("roughly 30%") and the testing conditions ("ledgers with more than 50,000 entries, measured on our standard benchmark set") to establish technical credibility.
+
+2. ISSUES
+[severity low] Outdated biometric terminology for iOS devices — Replace "fingerprint unlock" with "biometric unlock" to accurately encompass Face ID.
+QUOTE: "adds fingerprint unlock on supported devices."
+WHY: Modern iOS devices primarily use Face ID rather than fingerprint scanning (Touch ID), making "fingerprint unlock" an incomplete and dated description for iOS users.
+
+[severity low] Ambiguous PDF layout description — Clarify what "fits twelve months" means structurally (e.g., 12 columns of monthly data).
+QUOTE: "Report exports include a new landscape PDF layout that fits twelve months on one page."
+WHY: The phrase "fits twelve months" is ambiguous as to whether it refers to a 12-column horizontal spreadsheet layout or a highly condensed yearly summary.
+
+VERDICT — Genuinely good as-is, providing clear, quantified, and benefit-driven release notes that only require minor terminology polish.

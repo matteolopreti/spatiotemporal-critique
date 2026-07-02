@@ -54,8 +54,30 @@ Run at git ref `6a80a4d` (v4.12), 2026-07-02. Command: `python3 trial_runner.py`
 3. **The panel remains the recall mechanism:** 14/14 on flaws subtle enough that individual seats missed them, at a 3.5-invented-per-review rate.
 4. **Top seats saturate even this battery** (codex 10/10 everywhere) — discriminating *between* strong seats on recall would need a battery v3; the harness question didn't need it, because the noise axis already discriminated.
 
+## Battery v3 — the false-positive-suppression program (2026-07-03)
+
+The follow-up program asked: can invented findings on clean artifacts be driven from ~3.5 per review toward **≤0.5**, paying at most one planted flaw of recall? Everything was pre-registered before any run (criteria, stop rules, statistics); levers ran **cumulatively**, each read as a paired delta on identical fixtures; grading stayed deterministic; raw responses are committed in `trials/v3/results/` and re-scorable with `--report`.
+
+| cumulative stack | invented / clean seat-review | panel recall |
+|---|---|---|
+| shipped v4.13 contract (baseline) | 3.21 (45 over 14 reviews) | 14/14 |
+| + **quote gate** (findings must QUOTE the work; deterministic substring check) | 1.43 — p = 0.0013 | 14/14 |
+| + **cross-seat verification** (drop-biased, different lineage) | **0.57** — p = 0.018 | **14/14** |
+| + self-consistency (2-of-3 samples) | 0.43 — p = 0.40, **not adopted** | 14/14 |
+| + k≥2 panel intersection | 0.40/panel-review at recall **8/14** — **disqualified** | — |
+
+**What v3 establishes:**
+
+1. **The quote gate works mostly through behavior, not filtering.** Only 7 of the 25 removed findings died at the deterministic check — seats invent less when forced to quote. Zero panel recall cost. On the 12B local seat the gate traded 3 seat-level flaws for near-silence (panel union covered them) — the small-seat caveat, now measured.
+2. **The verifier-polarity dispute settled by data.** A keep-biased verifier was a no-op (p = 0.5); the skeptical drop-biased verifier cut invented findings 60% at zero panel recall cost. Our own source-verified research brief predicted the opposite; the measurement won.
+3. **A decoy was retired by its own reviewers.** All three lineages independently flagged an unbounded per-key counter dict in `v2t8_code.py`. By this battery's own standards (v2 *plants* resource leaks as flaws) the finding is real — the artifact left the clean set, and ~3 of the "invented" findings in the v2 table above carry this footnote.
+4. **The ≤0.5 goal was falsified by its own pre-registered stop rule.** Every surviving false positive is one class — the quote is real but does not *entail* the defect (omission-demands on short specs, contract-boundary disputes) — measured at **1.6 per clean panel review (95% lower bound 0.80)**, 3× the goal. Nothing in the verified literature removes that class under these constraints. The certification set (10 sealed clean decoys + 4 planted artifacts) was never opened; it waits, virgin, for a successor program on entailment checking.
+
+**v4.15 ships levers 1+2** as the default seat contract and the `--panel` verification pass (`--no-verify` opts out). Dropped findings are marked, never silently deleted.
+
 ## What they do not support
 
 - No claim about full repo/project **scale** (battery v2 reaches ~1200-word documents; whole-codebase reviews remain unmeasured).
 - No cross-battery comparability: these numbers are **battery trial-v1** and n=1 per cell; treat them as a first measurement, not a benchmark.
-- **Contamination clock:** the fixtures are now public; future model generations may train on them. Comparisons against future seats require a fresh battery (the harness makes that cheap).
+- **Contamination clock:** the fixtures are now public; future model generations may train on them. Comparisons against future seats require a fresh battery (the harness makes that cheap). The battery-v3 *certification* set is committed but was never shown to any seat — it stays valid until models train on this repo.
+- **Battery v3 bounds:** single run per cell, fixture scale; the 5.6× is measured against this battery's baseline, not a universal constant; the entailment-failure classification is a single adjudicator's documented judgment, re-checkable from the committed survivors.

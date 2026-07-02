@@ -1,0 +1,24 @@
+## PRESERVE
+
+* **Deterministic Traffic Progression**: The explicit step-down traffic allocation (0% -> 1% -> 10% -> 50% -> 100%) with a mandatory minimum 60-minute cumulative observation window.
+* **Low-Volume Safety Valve**: The requirement to extend gates to 10,000 requests or 30 minutes prevents premature promotion on low-traffic routes where metrics lack statistical significance.
+* **Database Compatibility Rules**: The strict enforcement of expand-contract migration phases, specifically banning destructive contract migrations during the active blue-green promotion window.
+* **Independent Alerting**: The requirement to evaluate candidate-specific metrics independently from aggregate production metrics, preventing canary errors from being masked by the primary color's volume.
+
+## ISSUES
+
+* **[Severity High] Low-Traffic Rollback Trigger Flaw** — At low traffic volumes (e.g., during the 1% gate on a low-throughput service that times out at 30 minutes with only 500 requests), a single 5xx error represents a 0.20% error rate, and two errors (0.40%) will trigger an immediate automatic rollback. 
+  * *Fix*: Add an absolute error count threshold to the rollback triggers (e.g., "Candidate HTTP 5xx rate exceeds 0.20% **and** represents at least 5 failed requests within a 2-minute window").
+
+* **[Severity High] Un-normalized Resource Utilization Gates** — CPU and memory thresholds (70% and 75%) are evaluated at every gate. If the candidate color hits 70% CPU utilization while only receiving 10% of the traffic, it will crash when promoted to 50% or 100%, yet this state currently passes the 10% gate criteria.
+  * *Fix*: Normalize resource utilization thresholds relative to the active traffic weight, or specify that CPU/memory utilization gates are only enforced at the 50% and 100% traffic steps.
+
+* **[Severity Med] Cold-Start Rollback Risk** — Step 9 scales the previous primary color down to standby capacity after 60 minutes. If a rollback is triggered near or immediately after the 60-minute mark, routing 100% of traffic back to an under-provisioned, cold-cached standby stack will cause immediate cascading resource exhaustion.
+  * *Fix*: Require a mandatory pre-warming step for the standby color before routing traffic back if it has been scaled down, or explicitly route traffic back in increments (e.g., 10%, 50%, 100%) if the 60-minute window has expired.
+
+* **[Severity Med] Hazardous Worker Shutdown Sequence** — Rollback step 4 suggests disabling candidate background workers *before* web traffic if duplicate processing is observed. Disabling workers while the candidate web tier is still active and receiving traffic will cause queue backlogs and unhandled asynchronous failures.
+  * *Fix*: Always drain and disable candidate web traffic first to stop the ingestion of new work, then allow background workers a brief drain window before disabling them.
+
+## VERDICT
+
+Genuinely good as-is, but requires immediate adjustments to its low-traffic rollback math and resource utilization normalization to prevent false-positive rollbacks and post-promotion outages.

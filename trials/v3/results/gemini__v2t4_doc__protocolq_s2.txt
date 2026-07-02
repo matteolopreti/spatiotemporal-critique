@@ -1,0 +1,21 @@
+1. PRESERVE
+*   The structured, standard postmortem layout (Summary, Timeline, Root Cause, Impact, Action Items) which makes the document easy to navigate.
+*   The concrete, quantified business impact metrics (e.g., 15% of transactions, 4,200 failed transactions, specific geographic regions).
+
+2. ISSUES
+*   [severity high] Chronological impossibility in the root cause analysis — align the timeline of events so that the cause precedes the effect.
+    QUOTE: "The incident began at approximately 13:40 UTC and lasted for 90 minutes before full service was restored."
+    QUOTE: "The primary driver of this incident was the deployment of the `AuthService` update v2.1.0 at 14:30 UTC, which caused the initial spike in transaction failures by saturating the connection pool and preventing valid requests from being processed."
+    WHY: The document claims a deployment at 14:30 UTC caused the "initial" failures that actually began 50 minutes earlier at 13:40 UTC.
+
+*   [severity med] Contradictory labeling of the incident's trigger — resolve the conflict between what SRE marked as the "Triggering Event" and what the "Root Cause" section claims is the "primary driver."
+    QUOTE: "14:05 UTC - SRE team initiates a manual configuration change to the load balancer to reroute traffic to a secondary cluster (Triggering Event)."
+    QUOTE: "The primary driver of this incident was the deployment of the `AuthService` update v2.1.0 at 14:30 UTC, which caused the initial spike in transaction failures by saturating the connection pool and preventing valid requests from being processed."
+    WHY: The document attributes the start of the incident to two entirely different events occurring at different times.
+
+*   [severity low] Discrepancy in the actual mitigation step — clarify whether the team rolled back the deployment or deployed a new configuration fix.
+    QUOTE: "15:10 UTC - Configuration fix is deployed to production."
+    QUOTE: "**Immediate:** Roll back the `AuthService` configuration to the previous stable version and verify connection pool stability (Completed)."
+    WHY: The timeline and the action items describe two different technical resolutions for the incident.
+
+VERDICT — Not genuinely good as-is, because the timeline and root cause contain severe chronological contradictions that invalidate the entire technical explanation of the outage.

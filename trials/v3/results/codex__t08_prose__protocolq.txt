@@ -1,0 +1,17 @@
+1. PRESERVE — Clear release scope, concrete feature list, platform coverage, and measurable performance claim.
+
+2. ISSUES — 
+[severity high] External factual claims cannot be correctness-reviewed from the provided work alone — provide release notes, changelog, benchmark data, or product source of truth.
+QUOTE: "Ledgerly 1.8 was released on March 12, 2025."
+QUOTE: "reduced report generation time by roughly 30%"
+WHY: These are factual claims that require external evidence; the text itself does not establish that they are true.
+
+[severity med] “today” is temporally unsafe and can become false after publication — replace with “as of March 12, 2025” or “is now available.”
+QUOTE: "is available on web, Windows, macOS, iOS, and Android today."
+WHY: The work gives a specific release date, but “today” depends on the reader’s date rather than the release date.
+
+[severity med] The performance claim is not reproducible enough — include baseline/new timings, benchmark name, environment, and sample ledger shape.
+QUOTE: "measured on our standard benchmark set."
+WHY: “Standard benchmark set” is internal shorthand, not enough for a reader to verify or interpret the 30% claim.
+
+VERDICT — Not genuinely good as-is for correctness; it is coherent, but key factual and performance claims are unsupported and one date reference is unstable.

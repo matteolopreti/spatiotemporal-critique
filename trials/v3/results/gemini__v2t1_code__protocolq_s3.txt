@@ -1,0 +1,46 @@
+### PRESERVE
+* The clean separation of concerns between parsing (`parse_remote_profiles`), merging (`merge_profiles`), and caching (`_cache_get`/`_cache_put`).
+* The use of `fromisoformat` for robust ISO-8601 parsing.
+* Safe dictionary copying (`dict(p)`) in `merge_profiles` to avoid mutating the original remote profile objects.
+
+### ISSUES
+
+[severity high] The cache never expires because the expiration subtraction logic is inverted.
+QUOTE:
+"    if stored_at - time.time() < CACHE_TTL_SECONDS:"
+WHY: Since `stored_at` is in the past, `stored_at - time.time()` is always a negative number, which is always less than `CACHE_TTL_SECONDS`, meaning cached entries are indefinitely treated as valid.
+FIX: Change the condition to `time.time() - stored_at < CACHE_TTL_SECONDS`.
+
+[severity med] Timezone mismatch in grace period calculation introduces offset errors.
+QUOTE:
+"    edited = datetime.fromisoformat(local_edit_ts).replace(tzinfo=None)
+    return datetime.now() - edited < timedelta(hours=grace_hours)"
+WHY: Stripping the timezone from a UTC timestamp and comparing it directly to `datetime.now()` (which returns local system time) introduces a timezone offset error of up to 24 hours depending on the host system's timezone.
+FIX: Import `timezone` from `datetime` and compare timezone-aware datetimes:
+```python
+from datetime import datetime, timedelta, timezone
+
+def is_within_grace(local_edit_ts, grace_hours=48):
+    edited = datetime.fromisoformat(local_edit_ts)
+    return datetime.now(timezone.utc) - edited < timedelta(hours=grace_hours)
+```
+
+[severity med] Uncaught `AttributeError` when parsing non-object JSON payloads.
+QUOTE:
+"    try:
+        body = json.loads(payload)
+        return [p for p in body.get("profiles", []) if p.get("id")]
+    except (ValueError, KeyError) as exc:"
+WHY: If the payload parses into a JSON list or primitive instead of an object, calling `.get()` on `body` will raise an uncaught `AttributeError` and crash the sync process.
+FIX: Catch `AttributeError` in the `except` block, or explicitly verify that `body` is a dictionary:
+```python
+    try:
+        body = json.loads(payload)
+        if not isinstance(body, dict):
+            return []
+        return [p for p in body.get("profiles", []) if p.get("id")]
+    except (ValueError, KeyError) as exc:
+```
+
+### VERDICT
+Not genuinely good as-is, because the cache never expires, timezone mismatches corrupt the grace-period window, and unexpected JSON payloads will crash the sync.

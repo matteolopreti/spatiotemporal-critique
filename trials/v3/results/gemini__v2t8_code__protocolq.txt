@@ -1,0 +1,17 @@
+1. PRESERVE
+* **Thread Safety**: The use of `threading.Lock()` correctly ensures that all state mutations and lookups on the shared `_counters` dictionary are thread-safe.
+* **Side-Effect-Free Queries**: The `remaining` method is properly designed to query the remaining quota without modifying the internal state or updating the window counters.
+* **Deterministic Window Alignment**: The floor division in `_current_window` correctly and deterministically aligns requests to fixed time boundaries.
+
+2. ISSUES
+[severity high] Unbounded memory growth (memory leak) for inactive keys — Implement an eviction mechanism (such as a background cleanup thread, a cleanup step every N operations, or a size-bounded LRU cache) to remove expired keys from `_counters`.
+QUOTE: "        self._counters = {}  # key -> (window_start, count)"
+WHY: Because keys are never deleted from this dictionary unless `reset()` is called, any unique key (such as a transient IP address or user ID) will remain in memory forever, leading to a memory leak in long-running services.
+
+[severity low] Redundant dictionary write when rate limit is exceeded — Remove the redundant assignment and return directly when the limit is reached.
+QUOTE: "            if count >= self.limit:"
+QUOTE: "                self._counters[key] = (start, count)"
+QUOTE: "                return False"
+WHY: Writing `(start, count)` back to `self._counters[key]` is redundant because those values were already retrieved from the dictionary and have not changed.
+
+VERDICT — Not genuinely good as-is, because the unbounded memory growth makes it unsafe for production services handling high-cardinality keys like IP addresses or user IDs.

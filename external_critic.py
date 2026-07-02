@@ -225,6 +225,113 @@ DEPTH_FULL = (
 )
 
 
+# --- Evidence grounding + cross-seat verification -----------------------------------
+# Graduated from the FP-suppression trial (battery v3, 2026-07-03; TRIAL.md): the
+# quote-gated contract + a drop-biased different-lineage verifier cut invented findings
+# 5.6x at zero panel recall cost (fixture scale). Shipped as measured improvements —
+# NOT a zero-false-positive guarantee: the residual class (quotes that are real but
+# don't entail the defect) is measured and documented, not solved.
+
+EVIDENCE_ADDENDUM = (
+    "\nEVIDENCE CONTRACT — grounding: every ISSUES/GENERIC item MUST include, on its "
+    "own lines directly under the item:\n"
+    'QUOTE: "<verbatim excerpt copied exactly from the work>"\n'
+    "WHY: <one sentence on why this quote entails the problem>\n"
+    "Use more than one QUOTE line when a single excerpt is not enough. A finding whose "
+    "QUOTE does not appear verbatim in the work is discarded unread — never paraphrase "
+    "inside QUOTE."
+)
+
+# Floor against trivially-matching micro-quotes; over-strictness is caught empirically
+# by the quote-emission-failure metric (TRIAL.md, battery v3).
+QUOTE_MIN_CHARS = 10
+
+
+def _gate_norm(s):
+    """Whitespace-collapsed, quote-normalized, lowercased — the gate's match space."""
+    for a, b in (("“", '"'), ("”", '"'), ("«", '"'), ("»", '"'), ("„", '"'),
+                 ("‘", "'"), ("’", "'"), ("‚", "'"), ("`", "")):
+        s = (s or "").replace(a, b)
+    return re.sub(r"\s+", " ", s).lower().strip()
+
+
+def split_findings(text):
+    """Split a critique into per-finding chunks (QUOTE:/WHY: lines stay attached).
+    The last chunk is trimmed at the VERDICT/REASONING boundary — without this, a
+    dropped final finding would take the verdict text with it (self-gate 2026-07-03)."""
+    t = _strip_reasoning(text or "")
+    chunks = re.split(r"(?=\[\s*severity)", t, flags=re.I)
+    if len(chunks) > 1:
+        out = chunks[1:]
+        m = re.search(r"(?im)^\s*(?:VERDICT|REASONING)\b", out[-1])
+        if m:
+            out[-1] = out[-1][:m.start()]
+        return out
+    m = re.search(r"(?:ISSUES|GENERIC)\b(.*?)(?:\bVERDICT\b|\bREASONING\b|$)", t, re.S | re.I)
+    if not m:
+        return []
+    parts = re.split(r"(?m)^(?=\s*(?:[-*•]|\d+[.)])\s+\S)", m.group(1))
+    return [p for p in parts if re.match(r"\s*(?:[-*•]|\d+[.)])\s+\S", p)]
+
+
+def quote_gate(text, artifact_text):
+    """Deterministic quote-existence gate: keep a finding iff at least one of its QUOTE
+    lines exists verbatim (normalized) in the work. Returns (kept_chunks, dropped)."""
+    art = _gate_norm(artifact_text)
+    kept, dropped = [], 0
+
+    def payload(q):
+        return _gate_norm(q).strip('"').strip("'").strip()
+
+    for ch in split_findings(text):
+        qs = re.findall(r"(?im)\bquote:\s*(.+?)\s*$", ch)
+        if any(len(payload(q)) >= QUOTE_MIN_CHARS and payload(q) in art for q in qs):
+            kept.append(ch)
+        else:
+            dropped += 1
+    return kept, dropped
+
+
+def gate_with_markers(response, artifact_text):
+    """The product form of the gate: the full critique with each unverifiable finding
+    replaced by an explicit marker — the reducer sees THAT something was dropped,
+    never its fabricated content. Returns (marked_text, dropped_count)."""
+    t = _strip_reasoning(response or "")
+    kept, dropped = quote_gate(response, artifact_text)
+    if not dropped:
+        return t, 0
+    keep = list(kept)
+    for ch in split_findings(response):
+        if ch in keep:
+            keep.remove(ch)
+            continue
+        t = t.replace(ch, "[finding removed by the quote gate — its QUOTE does not "
+                          "appear verbatim in the work]\n", 1)
+    return t, dropped
+
+
+VERIFY_TEMPLATE = (
+    "You are the verification seat of a blind review panel. Another reviewer produced the "
+    "numbered findings below about THE WORK; you did not write them and must not add findings "
+    "of your own. For each finding, judge whether its quoted evidence genuinely supports the "
+    "claimed problem in the work. {arm} Output exactly one line per finding and nothing else: "
+    "'<n>: KEEP' or '<n>: DROP — <reason, ten words max>'. Answer every number exactly once."
+)
+VERIFY_BIAS = ("Bias: DROP unless the evidence would convince a skeptical maintainer that "
+               "this is a real, consequential problem in the work.")
+VERIFY_SYSTEM = VERIFY_TEMPLATE.format(arm=VERIFY_BIAS)
+
+
+def parse_verdicts(res, n):
+    """Deterministic verdict parse; an unparsed number defaults to KEEP (a verifier that
+    can't be parsed must never silently delete findings)."""
+    drops = set()
+    for m in re.finditer(r"(?im)^\s*(?:finding\s*)?(\d+)\s*[:.)\-]+\s*(keep|drop)", res or ""):
+        if m.group(2).lower() == "drop":
+            drops.add(int(m.group(1)))
+    return [i not in drops for i in range(1, n + 1)]
+
+
 def build_prompt(artifact, brief, intent, mode):
     parts = []
     if intent:
@@ -1071,7 +1178,7 @@ def _seat_runtime(seat):
     return model, endpoint, _key_for(prov, endpoint)
 
 
-def do_panel(artifact_path, brief, intent, mode, depth, assume_yes):
+def do_panel(artifact_path, brief, intent, mode, depth, assume_yes, verify=True):
     """Run the REMEMBERED panel (--configure): critique the artifact with each chosen seat
     and print every view as a CONTESTED input for the framework's spatial synthesis
     (agreement = corroboration; a lone claim = contested — you are the reducer). Paid seats
@@ -1086,11 +1193,12 @@ def do_panel(artifact_path, brief, intent, mode, depth, assume_yes):
         art = sys.stdin.read() if artifact_path == "-" else open(artifact_path, encoding="utf-8").read()
     except OSError as e:
         sys.exit(f"cannot read {artifact_path}: {e}")
-    system = SYSTEM + (DEPTH_FULL if depth == "full" else "")
+    system = SYSTEM + EVIDENCE_ADDENDUM + (DEPTH_FULL if depth == "full" else "")
     prompt = build_prompt(art, brief, intent, mode)
     label_art = "<stdin>" if artifact_path == "-" else artifact_path
     print(f"PANEL — {len(panel['selected'])} remembered seat(s) on {os.path.basename(label_art)}:")
     ran = 0
+    seat_runs = []
     vetoed = latest_per_model(_registry_records())
     for seat in panel["selected"]:
         model, base_url, api_key = _seat_runtime(seat)
@@ -1114,7 +1222,7 @@ def do_panel(artifact_path, brief, intent, mode, depth, assume_yes):
                     continue
         print(f"\n=== PANEL CRITIC: {label}  ({base_url or HOST}) ===")
         try:
-            out = call_model(system, prompt, model=model, base_url=base_url, api_key=api_key)
+            raw = call_model(system, prompt, model=model, base_url=base_url, api_key=api_key)
         except Exception as e:  # noqa: BLE001 — one dead seat must not sink the panel
             msg = str(e)
             if re.search(r"429|quota|allocation|insufficient|401|403", msg, re.I):
@@ -1130,7 +1238,14 @@ def do_panel(artifact_path, brief, intent, mode, depth, assume_yes):
             else:
                 print(f"(unavailable: {e})")
             continue
-        print(out.strip())
+        marked, gate_dropped = gate_with_markers(raw, art)
+        print(marked.strip())
+        if gate_dropped:
+            print(f"(quote gate: {gate_dropped} finding(s) removed — no verbatim quote in the work)")
+        kept, _ = quote_gate(raw, art)
+        seat_runs.append({"label": label, "model": model, "base_url": base_url,
+                          "api_key": api_key, "lineage": seat.get("lineage", "?"),
+                          "kept": kept})
         log_run(label_art, mode, depth, brief, intent,
                 model=model, endpoint=(base_url or HOST), base_url=base_url)
         ran += 1
@@ -1138,11 +1253,48 @@ def do_panel(artifact_path, brief, intent, mode, depth, assume_yes):
         print("\nno seat produced a critique (all skipped/unavailable). Check your keys, "
               "Ollama, or `--configure`.")
         return 1
+    if verify and ran >= 2:
+        # Cross-seat verification (measured, battery v3: −60% invented findings at zero
+        # panel recall cost). Each seat's gated findings are judged by another ran seat,
+        # different lineage when available. A DROP demotes a finding to noise — visible,
+        # never silently deleted; the owner may still overrule (mandate 3).
+        print("\n=== CROSS-SEAT VERIFICATION (drop-biased; a DROP demotes, the owner can "
+              "overrule) ===")
+        for i, s in enumerate(seat_runs):
+            if not s["kept"]:
+                print(f"{s['label']}: no gated findings to verify")
+                continue
+            others = seat_runs[i + 1:] + seat_runs[:i]
+            ver = next((o for o in others if o["lineage"] != s["lineage"]), others[0])
+            if ver["lineage"] == s["lineage"]:
+                print(f"({s['label']}: verifier shares the finder's lineage — "
+                      "independence degraded; add a different-lineage seat via --configure)")
+            tidy = [re.sub(r"[ \t]+", " ", ch).strip() for ch in s["kept"]]
+            findings = "\n\n".join(f"{k}. {ch}" for k, ch in enumerate(tidy, 1))
+            vprompt = (f"THE WORK:\n---\n{art}\n---\n\nTHE FINDINGS (from another "
+                       f"reviewer):\n\n{findings}")
+            try:
+                vout = call_model(VERIFY_SYSTEM, vprompt, model=ver["model"],
+                                  base_url=ver["base_url"], api_key=ver["api_key"])
+            except Exception as e:  # noqa: BLE001 — verification degrades, never blocks
+                print(f"{s['label']}: verifier {ver['label']} unavailable ({e}) — "
+                      "findings stand unverified")
+                continue
+            verdicts = parse_verdicts(vout, len(s["kept"]))
+            n_drop = verdicts.count(False)
+            print(f"{s['label']} — verified by {ver['label']}: "
+                  + (f"{n_drop} of {len(verdicts)} DROPPED" if n_drop else
+                     f"all {len(verdicts)} kept"))
+            for line in (vout or "").strip().splitlines():
+                if re.match(r"\s*(?:finding\s*)?\d+\s*[:.)\-]", line, re.I):
+                    print("   " + line.strip())
     print(f"\n=== {ran} seat(s) ran. SYNTHESIZE (don't average, don't vote): read DISAGREEMENT first — "
           "it marks where to look. Agreement across LINEAGES is corroboration, NEVER proof (vendors "
           "share training data); same-lineage agreement is near-uninformative (shared blind spots). "
           "Emit the union of findings, disagreement-first — no combined verdict, no green light. A lone "
-          "claim is CONTESTED — you are the reducer. An ABSTAIN is a COVERAGE GAP, not agreement. ===")
+          "claim is CONTESTED — you are the reducer. An ABSTAIN is a COVERAGE GAP, not agreement. "
+          "A verifier DROP demotes its finding to noise unless another lineage independently raised "
+          "it — the owner may overrule either way. ===")
     return 0
 
 
@@ -1193,6 +1345,10 @@ def main():
                          "chosen seat critiques; paid seats spend-gated (--yes to allow)")
     ap.add_argument("--yes", action="store_true",
                     help="with --panel: run PAID seats without the per-seat spend confirm")
+    ap.add_argument("--no-verify", action="store_true",
+                    help="with --panel: skip the cross-seat verification pass (one extra "
+                         "call per findings-bearing seat; measured to cut invented "
+                         "findings ~60%% at zero panel recall cost)")
     args = ap.parse_args()
 
     if args.init:
@@ -1210,7 +1366,8 @@ def main():
     if args.panel:
         if not args.artifact:
             ap.error("--panel needs an artifact path (or '-' for stdin)")
-        sys.exit(do_panel(args.artifact, args.brief, args.intent, args.mode, args.depth, args.yes))
+        sys.exit(do_panel(args.artifact, args.brief, args.intent, args.mode, args.depth,
+                          args.yes, verify=not args.no_verify))
     if not args.artifact:
         ap.error("artifact is required (or pass --init / --configure / --discover / --probe / --panel)")
 
@@ -1235,7 +1392,7 @@ def main():
         print(f"(advisory: critic panel is {_panel_age_days(_pn)}d old — run `--configure` to "
               f"check for newer models)", file=sys.stderr)
 
-    system = SYSTEM + (DEPTH_FULL if args.depth == "full" else "")
+    system = SYSTEM + EVIDENCE_ADDENDUM + (DEPTH_FULL if args.depth == "full" else "")
     try:
         out = call_model(system, build_prompt(text, args.brief, args.intent, args.mode))
     except Exception as e:  # noqa: BLE001 — surface any failure plainly
@@ -1245,9 +1402,12 @@ def main():
         sys.exit(f"external critic unavailable ({e}). Is Ollama running? "
                  f"Try `ollama serve` and `ollama pull {MODEL}`.")
 
+    out, gate_dropped = gate_with_markers(out, text)
     where = f" @ {ENDPOINT}" if BASE_URL else ""
     print(f"=== EXTERNAL CRITIC ({MODEL}{where}) — independent viewpoint, weight by "
           f"agreement ===\n{out}")
+    if gate_dropped:
+        print(f"(quote gate: {gate_dropped} finding(s) removed — no verbatim quote in the work)")
 
     if not args.no_log and log_run(
             "<stdin>" if args.artifact == "-" else args.artifact,

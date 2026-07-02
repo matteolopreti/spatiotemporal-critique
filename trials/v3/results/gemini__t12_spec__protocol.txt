@@ -1,0 +1,12 @@
+1. PRESERVE
+* **Idempotency Contract:** The use of the `X-Relay-Id` header to enforce at-least-once delivery while requiring subscribers to handle duplicates.
+* **Payload Size Cap:** The 256 KB limit combined with the object storage reference fallback, which keeps the queue broker performant and avoids high memory overhead.
+* **Stateless Worker Scaling:** Relying on standard consumer groups for horizontal scaling, keeping the deployment architecture simple.
+
+2. ISSUES
+* [severity high] Head-of-line (HOL) blocking on slow endpoints — A few unresponsive or slow subscriber endpoints can exhaust the worker pool and delay deliveries for healthy subscribers. **Fix:** Implement a strict HTTP timeout (e.g., 5-10 seconds) and isolate delivery queues per subscriber (or use a virtual actor/fair-share scheduling model) so one slow destination cannot starve the system.
+* [severity high] Server-Side Request Forgery (SSRF) — Workers are sending POST requests to arbitrary user-defined URLs, which allows malicious users to target internal network services. **Fix:** Restrict delivery workers from resolving or routing to private, loopback, or link-local IP addresses (RFC 1918 / RFC 3927).
+* [severity med] Lack of outbound rate limiting — A sudden spike in events from a producer can result in workers accidentally DDoSing a subscriber's endpoint. **Fix:** Implement per-subscriber rate limiting at the worker level to throttle outbound delivery attempts.
+* [severity low] Vague signing specification — The document mentions "sign each payload" but does not define the mechanism. **Fix:** Specify the signature header (e.g., `X-Relay-Signature`) and the algorithm (e.g., HMAC-SHA256 using a shared secret).
+
+VERDICT — Not genuinely good as-is; while the basic queue-and-retry logic is sound, it lacks the critical security (SSRF) and traffic-control (HOL blocking, rate limiting) safeguards required for a production-grade webhook engine.

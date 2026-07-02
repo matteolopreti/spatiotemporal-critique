@@ -1,0 +1,22 @@
+1. PRESERVE
+* **At-least-once delivery with idempotency keys**: Requiring subscribers to handle duplicates and providing the `X-Relay-Id` header is the correct industry standard for reliable webhook delivery.
+* **Stateless worker design**: Keeping delivery workers stateless and scaling them via consumer groups simplifies horizontal scaling.
+* **Payload size limits**: Capping payloads at 256 KB and offloading larger payloads to object storage references prevents memory exhaustion and network bottlenecks.
+
+2. ISSUES
+
+[severity high] Head-of-line blocking during retries — Implement a multi-tiered delay queue architecture (e.g., database-backed scheduler or TTL-based retry exchanges) instead of blocking the main consumer group.
+QUOTE: "Failed deliveries retry with exponential backoff — 1, 2, 4, 8, up to a maximum interval of 15 minutes — for at most 24 hours, after which the event moves to a dead-letter queue that operators can inspect and replay."
+QUOTE: "scaling out is a matter of adding consumers to the queue's consumer group."
+WHY: Retrying failed messages with long backoffs inside a standard consumer group blocks the partition or queue, preventing other healthy webhooks from being delivered.
+
+[severity high] Server-Side Request Forgery (SSRF) vulnerability — Route all outgoing webhook requests through a hardened egress proxy (e.g., Smokescreen) that blocks access to private IP ranges and cloud metadata endpoints.
+QUOTE: "POST it to the subscriber's URL."
+WHY: Sending HTTP POST requests directly to user-defined subscriber URLs from internal workers allows malicious users to scan or attack internal infrastructure via Server-Side Request Forgery (SSRF).
+
+[severity med] Lack of jitter in exponential backoff — Add randomized jitter to the backoff intervals to prevent synchronized retry storms.
+QUOTE: "Failed deliveries retry with exponential backoff — 1, 2, 4, 8, up to a maximum interval of 15 minutes"
+WHY: Standard exponential backoff without randomized jitter causes synchronized retry spikes (thundering herd) when a downstream receiver experiences downtime.
+
+3. VERDICT
+VERDICT — Not genuinely good as-is, because it lacks critical distributed systems safety patterns (SSRF protection, retry queue architecture to avoid HOL blocking, and backoff jitter) which would cause production outages and security breaches.

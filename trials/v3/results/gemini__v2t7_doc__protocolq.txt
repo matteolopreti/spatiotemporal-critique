@@ -1,0 +1,16 @@
+1. PRESERVE
+* **Quantified performance metrics:** Providing exact benchmarks (e.g., "<300 ms at the 95th percentile on workspaces up to 100,000 documents") instead of vague "faster search" claims.
+* **Granular bug fix descriptions:** Explicitly detailing what was fixed (e.g., "PDF export cut off footnotes on A4 paper sizes") rather than using a generic "various bug fixes" bullet point.
+* **Explicit compatibility and API surface changes:** Clearly stating the lack of migration steps and listing the exact new endpoints (`/activity` and `/reviews`).
+
+2. ISSUES
+
+[severity low] Unclear persistence of locally queued comments during tab closure — specify if the local queue survives browser/tab closure.
+QUOTE: "The editor no longer loses an in-progress comment when the network drops mid-save; comments are queued locally and retried."
+WHY: The text does not clarify whether "queued locally" uses persistent storage (like LocalStorage/IndexedDB) to survive a user closing the tab during a network outage, or if it is only held in volatile memory.
+
+[severity low] Ambiguous query syntax for multi-word author names — clarify if quotes are required for names containing spaces.
+QUOTE: "Operators for exact phrases ("like this"), exclusion (-term), and author filters (from:name) work in any combination."
+WHY: The placeholder `from:name` implies a single word, leaving it unclear how the search parser handles common multi-word names (e.g., `from:Jane Doe` vs `from:"Jane Doe"`).
+
+VERDICT — Genuinely good as-is, because it is exceptionally precise, metrics-driven, free of marketing fluff, and highly informative for both users and administrators.

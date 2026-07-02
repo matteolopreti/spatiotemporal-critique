@@ -1,0 +1,30 @@
+1. PRESERVE
+- The **Expand/Contract** database migration rules are technically sound and correctly identify the necessity of additive changes before destructive ones.
+- The **Traffic Model** (0%, 1%, 10%, 50%, 100%) is a standard, industry-proven progression for canary deployments.
+- The inclusion of **`/livez` and `/readyz`** as specific health check requirements ensures the application's readiness state is verified beyond simple TCP connectivity.
+- The requirement that **Internal health checks/synthetic probes do not count toward customer traffic percentages** prevents skewing production metrics with non-production noise.
+
+2. ISSUES
+[severity high] Inconsistent Error Measurement (Count vs. Time)
+The promotion gate uses a sample-size-based threshold, while the rollback trigger uses a duration-based threshold. This creates a logic gap where a burst of errors could fail a promotion gate but fail to trigger an automated rollback, or vice versa.
+QUOTE: "Candidate HTTP 5xx rate is 0.20% or lower, measured as no more than 20 failed requests per 10,000 candidate requests."
+QUOTE: "Candidate HTTP 5xx rate exceeds 0.20% for 2 consecutive minutes."
+FIX: Standardize both to be time-based (e.g., "Average 5xx rate < 0.20% over a rolling 1-minute window") or count-based (e.g., "No more than X errors per Y requests").
+
+[severity high] Promotion vs. Rollback Threshold Discrepancy
+The promotion criteria imply an instantaneous, strict threshold for CPU/Memory, while the rollback triggers allow for a 5-minute grace period. This makes it impossible to determine if a gate is "passed" if a service experiences a momentary burst of activity.
+QUOTE: "Candidate CPU utilization is 70% or lower for each service pool."
+QUOTE: "Candidate CPU exceeds 70% or memory exceeds 75% for 5 consecutive minutes."
+FIX: Align the promotion gates with the rollback triggers by adding "for X consecutive minutes" to the promotion criteria.
+
+[severity med] Ambiguous "Active Gate Window" for Error Budget
+The specification fails to define what constitutes the "active gate window," making it unclear if the burn rate is calculated against the current step (e.g., 10 mins) or the cumulative time since the start of promotion.
+QUOTE: "Error-budget burn rate is less than 2.0x over the active gate window."
+FIX: Explicitly define the window as "the duration of the current traffic gate" (e.g., 10, 20, or 30 minutes).
+
+[severity med] Undefined Success Condition for Low-Traffic Services
+The instruction to extend a gate for low-traffic services identifies when to stop extending, but it does not state what happens if the 30-minute timeout is reached without hitting the 10,000 request threshold.
+QUOTE: "A gate with fewer than 10,000 candidate requests must be extended until it has at least 10,000 candidate requests or has observed traffic for 30 minutes, whichever happens first."
+FIX: Add a clarifying clause: "If the 30-minute observation window expires without reaching 10,000 requests, the gate is considered passed provided all other thresholds were met during that window."
+
+VERDICT — This is a high-quality technical specification, but it fails the "correctness" test due to inconsistent logic between the Promotion and Rollback sections. The discrepancy between count-based and time-based metrics would cause significant friction for automated deployment tooling.

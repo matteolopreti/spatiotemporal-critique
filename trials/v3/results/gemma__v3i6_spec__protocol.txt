@@ -1,0 +1,13 @@
+1. PRESERVE
+- The **Expand-Contract** database migration rules (specifically the prohibition of destructive changes during promotion).
+- The **4xx rate delta** comparison (comparing candidate to primary rather than an absolute value) to account for baseline noise.
+- The **10,000 requests / 30 minutes** minimum observation rule for low-traffic services to ensure statistical significance.
+- The **Rollback Trigger** logic for CPU/Memory using a longer window (5 mins) compared to Latency/Errors (2 mins).
+
+2. ISSUES
+- [High] **Cache Cold Start:** The spec defines "caches" as part of the production color but lacks a warming requirement. A cold cache on the candidate color during the 1% shift will likely cause p95 latency spikes and cache stampedes. — Add a "Warm-up" step in the Promotion Procedure (Step 4) requiring successful synthetic probes against the candidate while it is at 0% traffic to populate caches/connection pools.
+- [High] **Stateful Connection Handling:** The specification does not define behavior for long-lived connections (WebSockets, gRPC streams). A simple weight shift in the Astra Edge Router may not terminate existing connections on the primary color. — Add a requirement for "Graceful Connection Draining" during traffic shifts to ensure active connections are completed before the primary is decommissioned.
+- [High] **Data Rollback Ambiguity:** The rollback trigger includes "irreversible data corruption," but the procedure only covers traffic shifting. If a migration has already executed and corrupted data, switching traffic back to the old color will not fix the underlying data state. — Add a "Data Recovery" subsection to the Rollback Procedure specifying that for data-corrupting events, the rollback must involve a point-in-time recovery (PITR) or manual reconciliation script.
+- [Med] **Asynchronous Processing Overlap:** Step 4 of the Rollback Procedure mentions disabling workers only if "duplicate asynchronous processing is observed." This is reactive rather than proactive. — Change to: "Disable candidate background workers and ensure a 'drain' period where no new jobs are accepted before stopping the worker process."
+
+VERDICT — This is a high-quality, production-ready specification that correctly identifies the nuances of blue-green deployments (especially regarding DB migrations), but it currently lacks protections against "cold" infrastructure states and stateful connection persistence.

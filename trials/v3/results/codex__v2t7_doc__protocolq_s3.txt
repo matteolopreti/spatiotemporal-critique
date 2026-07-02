@@ -1,0 +1,14 @@
+1. PRESERVE — Clear structure by feature area; concrete user-facing improvements; compatibility section gives upgrade impact; permissions note in Search is important and must stay.
+
+2. ISSUES — 
+[severity med] “today” makes the release date unstable — replace with an absolute date or publish date.
+QUOTE: "Meridian 2.4 ships today for all workspace tiers."
+WHY: “Today” is only correct on the publication day and becomes ambiguous or wrong when copied, archived, or read later.
+
+[severity med] benchmark claim is too under-specified to assess correctness — add corpus size, environment, indexing state, and query mix, or link to benchmark methodology.
+QUOTE: "Queries return in under 300 ms at the 95th percentile on workspaces up to 100,000 documents, measured on our standard benchmark corpus."
+WHY: The claim depends on hidden benchmark conditions, so the release note asserts precision without enough context to verify or interpret it.
+
+ABSTAIN: actual product behavior, API compatibility, permission enforcement, and migration safety — the release notes provide claims but no implementation, test results, changelog diff, or product context to verify them.
+
+VERDICT — not genuinely good as-is for correctness review; the writing is clear, but key correctness claims are either time-fragile or unverifiable from the supplied work.

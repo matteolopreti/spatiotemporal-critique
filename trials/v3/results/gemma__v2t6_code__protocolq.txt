@@ -1,0 +1,19 @@
+1. PRESERVE
+- The use of a daemon thread to ensure the background worker doesn't block application shutdown.
+- The explicit state management for jobs (`PENDING`, `RUNNING`, `COMPLETED`, etc.) which allows for better observability.
+- The inclusion of an exception handler in the `_worker_loop` to prevent a single failing job from crashing the entire scheduler thread.
+
+2. ISSUES
+[severity high] Batch submission ignores trailing jobs that do not fit into a full batch size.
+QUOTE: "num_batches = len(jobs) // batch_size"
+WHY: Integer division ensures that any remainder of the list is excluded from processing if the total count isn't perfectly divisible by the batch size.
+
+[severity high] Manual lock management in `cancel_job` can lead to permanent deadlocks on exceptions.
+QUOTE: "self._lock.acquire()"
+WHY: Because there is no `try...finally` block or context manager, any exception (such as the `KeyError` raised immediately after) will leave the lock held indefinitely, blocking all other threads.
+
+[severity med] Linear scan of all jobs in the registry for every iteration of the worker loop.
+QUOTE: "for job in self._jobs.values():"
+WHY: This creates $O(N)$ complexity; using a `queue.Queue` would provide thread-safe, $O(1)$ retrieval and eliminate the need for manual polling with `time.sleep`.
+
+VERDICT — Not good as-is because of critical concurrency bugs (deadlocks) and logic errors in batch processing that cause data loss.

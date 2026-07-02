@@ -1,0 +1,21 @@
+1. PRESERVE
+
+* **Granular Facade Routing**: The strategy of using a billing facade that supports per-capability, per-cohort, and per-tenant routing allows for highly controlled, low-risk rollbacks and incremental traffic migration.
+* **Dual-Cycle Shadow Validation**: Running the Invoice Service in shadow mode for two full billing cycles with field-by-field validation ensures high-fidelity correctness before promotion.
+* **Immutable Historical Audit Trail**: Restricting services from mutating migrated historical invoices, and instead requiring explicit adjustment records, preserves financial auditability.
+
+2. ISSUES
+
+[severity high] Circular dependency deadlock between Phase B and Phase D execution.
+QUOTE: "Phase B cannot start until the canonical customer-balance event schema produced by Phase D has been accepted by finance operations and implemented by downstream consumers."
+QUOTE: "Confirm Phase D starts only after Phase B invoice extraction has completed production traffic promotion and finance has approved invoice parity reports."
+WHY: These two requirements create a logical deadlock where Phase B cannot begin until Phase D's schema is finalized, but Phase D cannot start until Phase B is fully promoted to production.
+FIX: Define and lock the canonical customer-balance event schema during Phase A (Foundation) so that Phase B can proceed independently of Phase D's execution.
+
+[severity med] Contradictory data migration logic violating idempotency.
+QUOTE: "The migration script is idempotent and safely re-runnable, so failed batches can be retried without creating duplicate records or changing previously migrated financial facts."
+QUOTE: "...by inserting transformed records into each target service table, preserving source IDs for traceability but appending new rows for every source record processed during the batch."
+WHY: Unconditionally appending new rows for every processed record during a batch run violates the stated idempotency of the migration script and will cause duplicate records on retries.
+FIX: Change the cutover checklist to specify an idempotent "upsert" mechanism or existence check based on the preserved source IDs rather than unconditionally appending rows.
+
+VERDICT — Not genuinely good as-is, because it contains a critical circular dependency that blocks the migration phases from starting, alongside a data migration plan that contradicts its own idempotency guarantees.

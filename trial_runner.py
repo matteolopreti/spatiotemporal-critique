@@ -128,54 +128,13 @@ def findings_count(text):
     return 0
 
 
-# Floor against trivially-matching micro-quotes ("def ", "the") that would let a
-# fabricated finding pass the gate on a 4-char excerpt. Over-strictness is measured,
-# not assumed: the per-seat quote-emission-failure metric (docs/08 E2) catches it.
-QUOTE_MIN_CHARS = 10
-
-
-def _norm(s):
-    """Whitespace-collapsed, quote-normalized, lowercased — the gate's match space."""
-    for a, b in (("“", '"'), ("”", '"'), ("«", '"'), ("»", '"'), ("„", '"'),
-                 ("‘", "'"), ("’", "'"), ("‚", "'"), ("`", "")):
-        s = (s or "").replace(a, b)
-    return re.sub(r"\s+", " ", s).lower().strip()
-
-
-def split_findings(text):
-    """Split a response into per-finding chunks (QUOTE:/WHY: lines stay with their item)."""
-    t = ec._strip_reasoning(text or "")
-    chunks = re.split(r"(?=\[\s*severity)", t, flags=re.I)
-    if len(chunks) > 1:
-        return chunks[1:]
-    m = re.search(r"(?:ISSUES|GENERIC)\b(.*?)(?:\bVERDICT\b|\bREASONING\b|$)", t, re.S | re.I)
-    if not m:
-        return []
-    parts = re.split(r"(?m)^(?=\s*(?:[-*•]|\d+[.)])\s+\S)", m.group(1))
-    return [p for p in parts if re.match(r"\s*(?:[-*•]|\d+[.)])\s+\S", p)]
-
-
-def quote_gate(text, artifact_text):
-    """Deterministic quote-existence gate (docs/08 E2): keep a finding iff at least one
-    of its QUOTE lines exists verbatim (normalized) in the artifact. Returns
-    (kept_chunks, dropped_count). Raw responses are never modified — re-scorable."""
-    art = _norm(artifact_text)
-    kept, dropped = [], 0
-
-    def payload(q):
-        # normalize FIRST (turns «»/“” wrappers into straight quotes), then strip the
-        # wrappers — a quote emitted as QUOTE: «x» must match an unquoted x in the work
-        return _norm(q).strip('"').strip("'").strip()
-
-    for ch in split_findings(text):
-        # \b not ^: seats emit "— QUOTE: …" inline as often as on its own line; a stray
-        # capture is harmless (it just won't match the artifact)
-        qs = re.findall(r"(?im)\bquote:\s*(.+?)\s*$", ch)
-        if any(len(payload(q)) >= QUOTE_MIN_CHARS and payload(q) in art for q in qs):
-            kept.append(ch)
-        else:
-            dropped += 1
-    return kept, dropped
+# The gate mechanisms GRADUATED into the product at v4.15 (external_critic.py owns the
+# single implementation; TRIAL.md battery v3). The trial consumes them — one source of
+# truth, and the harness measures exactly what ships.
+QUOTE_MIN_CHARS = ec.QUOTE_MIN_CHARS
+_norm = ec._gate_norm
+split_findings = ec.split_findings
+quote_gate = ec.quote_gate
 
 
 def flaws_named(text, flaws):
@@ -190,6 +149,156 @@ def flaws_named(text, flaws):
         if any(any(a in w for a in anchors) and any(c in w for c in crit) for w in windows):
             named.append(fl["label"])
     return named
+
+
+# --- E3: cross-seat verification (docs/08 §4) — both polarity arms, frozen E2 inputs ---
+VERIFY_ARMS = {
+    "K": ("Bias: KEEP unless the finding is clearly ungrounded in the work — the quote is "
+          "misread, the quoted text does not support the claim, or the claim is plainly false."),
+    "D": ("Bias: DROP unless the evidence would convince a skeptical maintainer that this is "
+          "a real, consequential problem in the work."),
+}
+VERIFY_SYSTEM = ec.VERIFY_TEMPLATE   # same text that ran in E3; arm D shipped as ec.VERIFY_SYSTEM
+
+
+def verifier_for(finder, author, seats):
+    """Next seat in rotation that is neither the finder nor the artifact's author —
+    an author-seat verifying its own artifact knows the answer key."""
+    i = seats.index(finder)
+    for step in (1, 2):
+        cand = seats[(i + step) % len(seats)]
+        if cand != author:
+            return cand
+    return seats[(i + 1) % len(seats)]   # all-author edge (cannot happen with 3 seats)
+
+
+parse_verdicts = ec.parse_verdicts   # graduated; unparsed defaults KEEP (against the lever)
+
+
+def run_verify(arts, seats, trials_dir, results_dir):
+    for arm in VERIFY_ARMS:
+        for finder in seats:
+            for art in arts:
+                if art["author"] == finder or art.get("retired"):
+                    continue
+                stem = os.path.splitext(os.path.basename(art["file"]))[0]
+                src = os.path.join(results_dir, f"{finder}__{stem}__protocolq.txt")
+                if not os.path.exists(src):
+                    continue
+                out = open(src, encoding="utf-8").read()
+                if out.startswith("(seat unavailable"):
+                    continue
+                text = open(os.path.join(trials_dir, art["file"]), encoding="utf-8").read()
+                kept, _ = quote_gate(out, text)
+                if not kept:
+                    continue
+                verifier = verifier_for(finder, art["author"], seats)
+                # cache key includes the verifier (self-gate 2026-07-03: a seat-list change
+                # must not silently reuse another verifier's judgment); legacy E3 files
+                # (no verifier suffix) are still honored by score_verify
+                path = os.path.join(results_dir,
+                                    f"{finder}__{stem}__verify{arm}_{verifier}.txt")
+                legacy = os.path.join(results_dir, f"{finder}__{stem}__verify{arm}.txt")
+                if os.path.exists(path) or os.path.exists(legacy):
+                    continue
+                tidy = [re.sub(r"[ \t]+", " ", ch).strip() for ch in kept]
+                findings = "\n\n".join(f"{i}. {ch}" for i, ch in enumerate(tidy, 1))
+                system = VERIFY_SYSTEM.format(arm=VERIFY_ARMS[arm])
+                prompt = (f"THE WORK:\n---\n{text}\n---\n\nTHE FINDINGS (from another reviewer):"
+                          f"\n\n{findings}")
+                model, base, key_prov = ALL_SEATS[verifier]
+                api_key = (ec._provider_key(key_prov) or "") if key_prov else ""
+                try:
+                    res = ec.call_model(system, prompt, model=model, base_url=base, api_key=api_key)
+                except Exception as e:  # noqa: BLE001
+                    res = f"(seat unavailable: {e})"
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(res)
+                print(f"  verify{arm} {verifier:6} judged {finder:6} on {stem}", flush=True)
+
+
+def score_verify(arts, seats, results_dir, trials_dir):
+    """Post-E3 stack per arm: findings kept by the gate AND by the verifier."""
+    print(f"\n{'arm':4} {'finder':7} {'recall':>8} {'invented':>9} {'vdrop-fp':>9} {'vdrop-recall':>13}")
+    for arm in VERIFY_ARMS:
+        agg = {}
+        union = {}
+        for finder in seats:
+            a = agg.setdefault(finder, {"named": 0, "flaws": 0, "inv": 0, "dropfp": 0, "droprec": 0})
+            for art in arts:
+                if art["author"] == finder or art.get("retired"):
+                    continue
+                stem = os.path.splitext(os.path.basename(art["file"]))[0]
+                src = os.path.join(results_dir, f"{finder}__{stem}__protocolq.txt")
+                ver = verifier_for(finder, art["author"], seats)
+                vpath = os.path.join(results_dir, f"{finder}__{stem}__verify{arm}_{ver}.txt")
+                if not os.path.exists(vpath):   # legacy E3 naming (pre verifier-in-key)
+                    vpath = os.path.join(results_dir, f"{finder}__{stem}__verify{arm}.txt")
+                if not os.path.exists(src):
+                    continue
+                out = open(src, encoding="utf-8").read()
+                if out.startswith("(seat unavailable"):
+                    continue
+                text = open(os.path.join(trials_dir, art["file"]), encoding="utf-8").read()
+                kept, _ = quote_gate(out, text)
+                if kept and os.path.exists(vpath):
+                    vres = open(vpath, encoding="utf-8").read()
+                    verdicts = parse_verdicts(vres, len(kept))
+                else:
+                    verdicts = [True] * len(kept)   # no verifier response -> keep all
+                surv = [ch for ch, keep in zip(kept, verdicts) if keep]
+                if art["decoy"]:
+                    a["inv"] += len(surv)
+                    a["dropfp"] += len(kept) - len(surv)
+                else:
+                    pre = set(flaws_named("\n".join(kept), art["flaws"]))
+                    post = set(flaws_named("\n".join(surv), art["flaws"]))
+                    a["named"] += len(post)
+                    a["flaws"] += len(art["flaws"])
+                    a["droprec"] += len(pre - post)
+                    union.setdefault(art["file"], set()).update(post)
+            print(f"{arm:4} {finder:7} {str(a['named']) + '/' + str(a['flaws']):>8} "
+                  f"{a['inv']:>9} {a['dropfp']:>9} {a['droprec']:>13}")
+        got = sum(len(v) for v in union.values())
+        denom = sum(len(x["flaws"]) for x in arts if not x["decoy"] and not x.get("retired"))
+        inv = sum(v["inv"] for v in agg.values())
+        print(f"{arm:4} {'PANEL':7} {str(got) + '/' + str(denom):>8} {inv:>9}   "
+              f"(union recall; invented summed over clean seat-reviews)\n")
+
+
+# --- E4: self-consistency samples (docs/08 §4, amended §13: seats carrying FP mass;
+# fresh independent resamples, not section-shuffling — shuffling corrupts single-file
+# code artifacts and perturbs cross-section planted flaws) -------------------------
+def run_samples(arts, trials_dir, results_dir, seats=("codex", "gemini")):
+    conds = conditions_for("v3")
+
+    def one_seat(seat):
+        model, base, key_prov = ALL_SEATS[seat]
+        api_key = (ec._provider_key(key_prov) or "") if key_prov else ""
+        for art in arts:
+            if art["author"] == seat or art.get("retired"):
+                continue
+            text = open(os.path.join(trials_dir, art["file"]), encoding="utf-8").read()
+            stem = os.path.splitext(os.path.basename(art["file"]))[0]
+            for s in (2, 3):
+                path = os.path.join(results_dir, f"{seat}__{stem}__protocolq_s{s}.txt")
+                if os.path.exists(path):
+                    continue
+                prompt = ec.build_prompt(text, BRIEF, "", "correctness")
+                try:
+                    out = ec.call_model(conds["protocolq"], prompt, model=model,
+                                        base_url=base, api_key=api_key)
+                except Exception as e:  # noqa: BLE001
+                    out = f"(seat unavailable: {e})"
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(out)
+                print(f"  sample{s} {seat:6} {stem}", flush=True)
+
+    threads = [threading.Thread(target=one_seat, args=(s,)) for s in seats]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
 
 
 def run_seat(seat, arts, conds, trials_dir, results_dir):
@@ -219,7 +328,7 @@ def score(arts, seats, conds, results_dir, trials_dir):
     union = {}   # (cond, artifact) -> set(labels)  [panel = union of `protocol`]
     for seat in seats:
         for art in arts:
-            if art["author"] == seat:
+            if art["author"] == seat or (art["decoy"] and art.get("retired")):
                 continue
             stem = os.path.splitext(os.path.basename(art["file"]))[0]
             for cond in conds:
@@ -273,6 +382,14 @@ def main():
     arts = json.load(open(os.path.join(trials_dir, "manifest.json")))["artifacts"]
     seats = BATTERY_SEATS[battery]
     conds = conditions_for(battery)
+    if "--verify" in sys.argv:            # E3: cross-seat verification over frozen E2 outputs
+        if not report_only:
+            run_verify(arts, list(seats), trials_dir, results_dir)
+        score_verify(arts, list(seats), results_dir, trials_dir)
+        return
+    if "--samples" in sys.argv:           # E4: M=3 self-consistency resamples
+        run_samples(arts, trials_dir, results_dir)
+        return
     if not report_only:
         threads = [threading.Thread(target=run_seat, args=(s, arts, conds, trials_dir, results_dir))
                    for s in seats]

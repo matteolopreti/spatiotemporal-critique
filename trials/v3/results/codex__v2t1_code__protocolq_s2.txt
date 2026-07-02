@@ -1,0 +1,17 @@
+1. PRESERVE — The merge copies remote profile dicts before applying local edits, so cached/parsed remote objects are not mutated during merge.
+
+2. ISSUES —
+[severity high] Cache entries never expire because the age calculation is reversed — change the condition to `time.time() - stored_at < CACHE_TTL_SECONDS`.
+QUOTE: "if stored_at - time.time() < CACHE_TTL_SECONDS:"
+WHY: For any past `stored_at`, this expression is negative and therefore always less than `300`.
+
+[severity high] Grace-window comparison ignores UTC and uses local naive time — keep timezone-aware datetimes and compare against `datetime.now(datetime.UTC)`.
+QUOTE: "edited = datetime.fromisoformat(local_edit_ts).replace(tzinfo=None)"
+QUOTE: "return datetime.now() - edited < timedelta(hours=grace_hours)"
+WHY: The documented input is UTC, but the code strips timezone data and compares it to local system time.
+
+[severity med] Malformed `profiles` elements can crash parsing despite the warning path — validate that `body` and each profile are dicts before calling `.get`.
+QUOTE: "return [p for p in body.get(\"profiles\", []) if p.get(\"id\")]"
+WHY: If `payload` decodes to a non-dict or contains non-dict profile entries, `.get` raises `AttributeError`, which is not caught.
+
+VERDICT — not genuinely good as-is; the cache bug alone breaks expected sync freshness, and the time handling can make conflict resolution wrong.

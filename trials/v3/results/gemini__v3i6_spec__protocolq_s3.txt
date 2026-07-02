@@ -1,0 +1,29 @@
+## PRESERVE
+
+* **Low-Traffic Gate Extension Rule**: The statistical safeguard requiring gates with fewer than 10,000 requests to be extended prevents false-positive promotion decisions on low-volume services.
+* **Strict Database Migration Phase Separation**: Forbidding contract-phase migrations during the active blue-green promotion phase prevents irreversible data loss while both application versions run concurrently.
+* **Independent Candidate Alerting**: The requirement to evaluate candidate-specific metrics independently of aggregate production metrics ensures that localized candidate failures are not masked by the healthy primary volume.
+
+## ISSUES
+
+[severity high] Percentage-based rollback triggers will cause false-positive rollbacks due to statistical noise at low traffic allocations.
+QUOTE: "Candidate HTTP 5xx rate exceeds 0.20% for 2 consecutive minutes."
+QUOTE: "Shift traffic to 1% candidate / 99% primary. Observe for 10 minutes."
+WHY: At a 1% traffic allocation, a low-volume service may receive so few requests per minute that a single 5xx error will mathematically exceed the 0.20% threshold, triggering an unnecessary rollback.
+FIX: Add a minimum volume threshold (e.g., "and candidate receives at least 500 requests per minute") before percentage-based rollback triggers apply, or use absolute error counts during the 1% and 10% steps.
+
+[severity high] The resource utilization rollback window is too long relative to the initial promotion gate duration, allowing failing releases to advance.
+QUOTE: "Shift traffic to 1% candidate / 99% primary. Observe for 10 minutes. Advance only if all production gate thresholds pass."
+QUOTE: "Candidate CPU exceeds 70% or memory exceeds 75% for 5 consecutive minutes."
+WHY: A memory leak or CPU spike starting at minute 6 of the 1% gate will not trigger a rollback before the 10-minute gate expires, resulting in an automatic promotion to 10% traffic despite failing thresholds.
+FIX: Reduce the resource utilization rollback trigger window to 2 consecutive minutes, or require that the gate observation window be at least double the rollback trigger window.
+
+[severity med] Retaining the previous primary at "standby capacity" conflicts with the prerequisite for running contract migrations.
+QUOTE: "After 60 minutes with no rollback trigger, scale the previous primary to standby capacity."
+QUOTE: "A contract release may run only after the previous primary color has been retired and no supported application version depends on the old schema."
+WHY: Keeping the previous primary at "standby capacity" implies it remains deployed and active at low scale, which violates the contract migration requirement to be fully retired and risks breaking those standby instances during destructive schema changes.
+FIX: Explicitly define "standby capacity" as 0 replicas (fully undeployed), or specify that the previous primary must be completely destroyed before contract migrations can proceed.
+
+## VERDICT
+
+Not genuinely good as-is, because the mathematical and temporal misalignment between the promotion gate durations (10 minutes) and the rollback trigger evaluation windows (5 minutes) will allow failing releases to bypass gates, while low-traffic statistical noise will trigger false-alarm rollbacks.

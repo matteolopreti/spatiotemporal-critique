@@ -1,0 +1,18 @@
+1. PRESERVE — durable queue between producers and workers; explicit at-least-once semantics; duplicate handling via `X-Relay-Id`; bounded retry window with DLQ; stateless workers; payload size cap with object-storage references.
+
+2. ISSUES
+
+[severity high] signature design is underspecified and likely replayable — define exact signature headers, canonical payload, timestamp tolerance, secret lookup/rotation, and include timestamp + delivery id in the signed material.
+QUOTE: "sign each payload"
+WHY: A payload signature without freshness, canonicalization, and key semantics is not enough to let subscribers correctly reject replayed or ambiguously signed requests.
+
+[severity med] retry schedule is ambiguous because the units are missing — state the units explicitly, e.g. `1s, 2s, 4s...` or `1m, 2m, 4m...`, and add jitter to prevent synchronized retry bursts.
+QUOTE: "Failed deliveries retry with exponential backoff — 1, 2, 4, 8, up to a maximum interval of 15 minutes"
+WHY: The numbers `1, 2, 4, 8` cannot be implemented correctly because the note never says whether they are seconds, minutes, or something else.
+
+[severity med] scaling via a single consumer group ignores per-subscriber isolation and retry fairness — partition or schedule by subscriber/event so one failing endpoint cannot consume disproportionate worker capacity or reorder/concurrently retry related deliveries unexpectedly.
+QUOTE: "scaling out is a matter of adding consumers to the queue's consumer group"
+QUOTE: "Failed deliveries retry with exponential backoff"
+WHY: Retried failed deliveries share the same worker pool model, but the note does not define fairness, concurrency limits, or isolation across subscribers.
+
+VERDICT — not good as-is; the core shape is sound, but the signature and retry/scaling details are too underspecified for a correct webhook delivery design.

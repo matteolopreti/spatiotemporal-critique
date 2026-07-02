@@ -1,0 +1,24 @@
+1. PRESERVE — Clear four-layer architecture; Vector disk buffering; Kafka replay buffer; consumer-lag-based scaling; DLQ for malformed payloads; hot/warm/cold retention intent.
+
+2. ISSUES
+
+[severity high] Throughput math is wrong by 1000x — change `100 GB per second` to approximately `100 MB per second`, then redo Kafka/OpenSearch sizing from that corrected baseline.
+QUOTE: "We anticipate a peak ingestion rate of 50,000 log events per second across all production clusters. Assuming an average uncompressed log event size of 2 KB, the pipeline must be provisioned to handle a peak throughput of 100 GB per second at the ingestion tier."
+WHY: 50,000 × 2 KB/s equals 100,000 KB/s, about 100 MB/s, not 100 GB/s.
+
+[severity high] Retention requirements contradict each other — decide whether historical query support is 30 days or 90 days, then align S3 lifecycle, compliance language, and Athena query expectations.
+QUOTE: "the system allows users to query historical cold storage logs up to 90 days old using an on-demand Athena-based query interface."
+QUOTE: "All logs in the cold storage tier (S3) are governed by an automated lifecycle policy that permanently purges objects exactly 30 days after ingestion."
+WHY: Logs purged exactly 30 days after ingestion cannot be queried up to 90 days old.
+
+[severity high] Availability budget is mathematically wrong — correct the downtime budget to 43.2 minutes per 30 days, or raise the SLO to 99.99% if 4.32 minutes is the intended target.
+QUOTE: "Endpoint Availability: The ingestion pipeline target availability is set to 99.9% over any rolling 30-day window, which translates to a maximum allowable downtime budget of 4.32 minutes per month for critical ingestion endpoints."
+WHY: 99.9% availability over 30 days allows 0.1% downtime, which is 43.2 minutes, not 4.32 minutes.
+
+[severity med] Regional-outage resilience is claimed but the design centralizes Kafka and consumers in one region — add multi-region ingestion, regional Kafka clusters, replication/failover semantics, and client routing behavior.
+QUOTE: "Ensure the ingestion endpoint remains highly resilient to regional cloud outages and network partitions."
+QUOTE: "A multi-AZ Kafka cluster acts as the primary ingestion buffer, deployed across three availability zones in our primary cloud region."
+QUOTE: "A custom Go-based service runs as a deployment in our core region"
+WHY: Multi-AZ within one primary/core region does not satisfy resilience to regional cloud outages.
+
+VERDICT — Not good as-is; the architecture shape is reasonable, but the capacity, retention, availability, and regional-resilience claims contain hard correctness errors.

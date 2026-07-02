@@ -1,0 +1,18 @@
+1. PRESERVE — `merge_profiles` builds `merged = {p["id"]: dict(p) for p in remote}`, so remote profile dicts are copied before applying local edits. Keep that non-mutating merge behavior.
+Preserve the explicit “recent local edits win” rule in `merge_profiles`; it matches the stated product behavior.
+
+2. ISSUES — [severity high] cache entries never expire — change the TTL check to `time.time() - stored_at < CACHE_TTL_SECONDS` or `stored_at + CACHE_TTL_SECONDS > time.time()`.
+QUOTE: "if stored_at - time.time() < CACHE_TTL_SECONDS:"
+WHY: Since `stored_at - time.time()` is negative after insertion, this condition stays true long after 300 seconds, so stale remote profiles can be pushed indefinitely.
+
+[severity high] grace-window conflict resolution uses local wall-clock time against a UTC timestamp — keep timezone-aware datetimes and compare to `datetime.now(timezone.utc)`.
+QUOTE: "edited = datetime.fromisoformat(local_edit_ts).replace(tzinfo=None)"
+QUOTE: "return datetime.now() - edited < timedelta(hours=grace_hours)"
+WHY: Dropping timezone info and comparing to local `datetime.now()` makes the 48-hour window wrong on non-UTC machines and around timezone/DST boundaries.
+
+[severity med] malformed but valid JSON can crash parsing instead of returning `[]` — validate that `body` is a dict and each profile is a dict, or catch `AttributeError`.
+QUOTE: "return [p for p in body.get(\"profiles\", []) if p.get(\"id\")]"
+QUOTE: "except (ValueError, KeyError) as exc:"
+WHY: If `payload` is `[]`, `"x"`, or contains non-dict profile entries, `.get` raises `AttributeError`, which is not caught.
+
+VERDICT — not good as-is; the cache bug alone breaks correctness by making remote data permanently stale.

@@ -1,0 +1,16 @@
+1. PRESERVE
+* **Specific performance benchmarks:** The use of precise metrics (e.g., "under 300 ms at the 95th percentile on workspaces up to 100,000 documents") instead of vague "faster search" claims.
+* **Explicit upgrade and compatibility paths:** Clear reassurance that no database migrations are required and that self-hosted instances can upgrade in place.
+* **Granular bug-fix descriptions:** Detailing specific edge cases (like A4 paper size footnote cutoffs and local comment queuing during network drops) rather than generic "bug fixes and performance improvements."
+
+2. ISSUES
+
+[severity med] Vague definition of "untouched sections" for partial approvals — Clarify the exact technical mechanism that determines a section is "untouched" (e.g., "sections without structural or text changes").
+QUOTE: "a returned draft keeps approvals for untouched sections."
+WHY: It is unclear how "untouched" is defined (e.g., by character diff, block ID, or manual exclusion), which can lead to users unexpectedly losing or retaining approvals when making minor global edits.
+
+[severity low] Non-standard REST API paths — Use the actual namespaced or versioned API paths instead of root-level paths.
+QUOTE: "the REST API adds two read-only endpoints (/activity and /reviews)"
+WHY: Standard REST APIs use versioned or namespaced paths (e.g., `/api/v1/activity`), and listing them as root paths is misleading or technically inaccurate for integration developers.
+
+3. VERDICT — Genuinely good as-is, because it is exceptionally clear, metrics-driven, and completely free of marketing fluff.

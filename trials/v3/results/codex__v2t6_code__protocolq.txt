@@ -1,0 +1,24 @@
+1. PRESERVE — the worker marks a job `RUNNING` while holding the lock before executing it, so two workers cannot claim the same pending job through the normal path. The `batch_size <= 0` guard is also correct.
+
+2. ISSUES
+[severity high] duplicate `job_id` submissions can delete or corrupt another job — reject duplicate IDs in `submit_job`, especially when an existing job is `RUNNING`.
+QUOTE: "self._jobs[job.job_id] = job"
+QUOTE: "del self._jobs[job_to_run.job_id]"
+WHY: A new job with the same ID can overwrite a running job in `_jobs`, and when the old job completes it deletes the new job by ID.
+
+[severity high] `cancel_job` can permanently deadlock the scheduler — use `with self._lock:` or `try/finally` so every path releases the lock.
+QUOTE: "self._lock.acquire()"
+QUOTE: "if job_id not in self._jobs:"
+QUOTE: "raise KeyError(f\"Job {job_id} does not exist in the registry.\")"
+WHY: The missing-job path raises while still holding `_lock`, blocking future submits, cancels, and worker progress.
+
+[severity med] `submit_batches` silently drops the final partial batch — iterate with `range(0, len(jobs), batch_size)` instead of precomputing only full batches.
+QUOTE: "num_batches = len(jobs) // batch_size"
+QUOTE: "for i in range(num_batches):"
+WHY: Integer division excludes any remainder, so `len(jobs) % batch_size` jobs are never submitted.
+
+[severity med] failed jobs are retained forever with no retrieval or cleanup path — either remove failed jobs like completed jobs or expose a bounded failure registry/result API.
+QUOTE: "job_to_run.status = \"FAILED\""
+WHY: Unlike completed jobs, failed jobs stay in `_jobs`, accumulating indefinitely and leaving lifecycle semantics inconsistent.
+
+VERDICT — not good as-is; the scheduler has real correctness bugs around ID reuse, locking, and batch loss.

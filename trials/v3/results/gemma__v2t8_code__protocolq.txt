@@ -1,0 +1,16 @@
+1. PRESERVE — 
+- The thread-safe implementation using `threading.Lock` to protect the shared dictionary.
+- The logic for calculating fixed windows using integer division (`now // self.window_seconds`).
+- The non-side-effect behavior of the `remaining` method.
+
+2. ISSUES —
+[severity high] Unbounded memory growth (Memory Leak) — Use a TTL-based cache or an eviction policy (like LRU) for the `_counters` dictionary to prevent OOM errors when encountering many unique keys.
+QUOTE: "self._counters = {}  # key -> (window_start, count)"
+WHY: The dictionary grows indefinitely with every unique key encountered; there is no mechanism to remove keys that are no longer active or have passed their window.
+
+[severity med] Use of `time.time()` for rate limiting — Replace `time.time()` with `time.monotonic()` to ensure stability against system clock adjustments (e.g., NTP syncs).
+QUOTE: "if now is None:
+    now = time.time()"
+WHY: `time.time()` can jump backwards or forwards, which can cause erratic behavior in rate limiting logic that relies on elapsed duration.
+
+VERDICT — This is a functionally correct implementation of the fixed-window algorithm but is not production-ready because it will eventually crash the process due to memory exhaustion.

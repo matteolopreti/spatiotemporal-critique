@@ -110,7 +110,7 @@ That's the whole onboarding. Optional extras:
      no combined score, no green light — the verdict stays yours
 ```
 
-**Why this works:** every seat reads your work cold (independent, no anchoring on each other); no seat can *bless* the work, only raise problems; and the seats come from **different vendors**, so they don't share blind spots the way one model reviewing its own output does. [Measured](TRIAL.md): this cut invented problems 2.6× versus a lone critic while finding more of the real ones.
+**Why this works:** every seat reads your work cold (independent, no anchoring on each other); no seat can *bless* the work, only raise problems; and the seats come from **different vendors**, so they don't share blind spots the way one model reviewing its own output does. [Measured](TRIAL.md): the balanced contract cut invented problems 2.6× versus a lone critic while finding more of the real ones — and v4.15's evidence gate + cross-seat verification cut them a further 5.6× at unchanged panel recall (measured on separate batteries — the factors don't simply multiply; fixture scale; raw data committed).
 
 *The full specification — the four mandates, the dials, the awake/asleep loop — is in **[PROTOCOL.md](PROTOCOL.md)**; the [external critic](#external-critic--probe-pick-run) commands are below.*
 

@@ -1,0 +1,2 @@
+1: KEEP
+2: DROP — Nullable columns and tolerance rules already handle this.

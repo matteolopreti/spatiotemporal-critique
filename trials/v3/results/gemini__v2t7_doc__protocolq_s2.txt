@@ -1,0 +1,16 @@
+1. PRESERVE
+* **Quantitative performance benchmarks:** The highly specific search performance metrics (under 300 ms at the 95th percentile on up to 100,000 documents) which establish clear, testable engineering expectations.
+* **Explicit compatibility and migration assurance:** The clear statement that no migration steps are required and that all 2.x integrations and API tokens remain functional.
+* **Granular feature explanations:** The detailed breakdown of the review workflow (side-by-side diffs, paragraph-anchored comments, and section-level template requirements).
+
+2. ISSUES
+[severity med] Ambiguous authorization scope for the new `/activity` API endpoint — clarify that the new endpoint enforces admin-only access to prevent the implication that sensitive audit logs are exposed to standard users.
+QUOTE: "The REST API adds two read-only endpoints (/activity and /reviews) and deprecates nothing in this release."
+QUOTE: "Workspace admins get a new activity view: sign-ins, permission changes, publishing events, and export actions, filterable by user and date range, and exportable as CSV."
+WHY: The notes fail to explicitly state whether the `/activity` REST endpoint restricts access to workspace administrators, which is critical given that the activity log contains sensitive security events like sign-ins and permission changes.
+
+[severity low] Imprecise performance metric for load times — replace the vague fractional improvement with a concrete benchmark or percentage.
+QUOTE: "Cold-start load time for large workspaces improved by roughly a third after we moved sidebar hydration off the critical path."
+WHY: "Roughly a third" is unnecessarily vague and lacks the rigorous benchmarking context (such as workspace size or percentile) established earlier in the search section.
+
+VERDICT — Genuinely good as-is, requiring only minor clarifications on API authorization and performance metrics to be fully production-ready.

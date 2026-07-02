@@ -1,0 +1,2 @@
+1: DROP — "Supported devices" correctly encompasses both Face ID and Touch ID.
+2: DROP — The primary benefit of the layout change is clearly communicated.

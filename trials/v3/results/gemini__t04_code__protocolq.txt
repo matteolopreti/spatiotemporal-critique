@@ -1,0 +1,12 @@
+1. PRESERVE
+* Clear, concise docstrings that accurately document the behavior and the raised exception.
+* Correct and straightforward conditional logic for clamping a single value in `clamp`.
+* Descriptive error message in the `ValueError` when `low > high`.
+
+2. ISSUES
+[severity med] Redundant and bypassable range validation in `clamp_all` — Validate `low > high` once at the start of `clamp_all` before iterating. This avoids $O(N)$ redundant checks and ensures a `ValueError` is consistently raised even when `values` is empty.
+QUOTE: "def clamp_all(values, low, high):"
+QUOTE: "    return [clamp(v, low, high) for v in values]"
+WHY: If `values` is empty, the list comprehension never calls `clamp`, which silently bypasses the range validation, while for non-empty inputs it redundantly performs the `low > high` check on every single iteration.
+
+VERDICT — Genuinely good as-is, requiring only a minor adjustment to `clamp_all` to ensure consistent validation and better performance on large collections.

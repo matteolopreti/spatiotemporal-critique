@@ -1,0 +1,19 @@
+1. PRESERVE — durable queue ingestion; at-least-once semantics are explicit; duplicate handling is called out with `X-Relay-Id`; payload size cap with object-storage references prevents oversized queue messages.
+
+2. ISSUES — the highest-leverage problems, each as: [severity high/med/low] the problem — a concrete fix.
+
+[severity high] replay correctness is underspecified; operators can redeliver expired events without a stated stable delivery identity or attempt history — require `X-Relay-Id` to be stable across all attempts and replays, persist attempt count/status/last error/next retry time, and preserve that metadata when replaying from DLQ.
+QUOTE: "an idempotency key ships in the `X-Relay-Id` header on every attempt"
+QUOTE: "after which the event moves to a dead-letter queue that operators can inspect and replay"
+WHY: The note says the key exists on attempts and replay exists later, but never states that the same key survives retries and operator replays, which is required for subscriber idempotency to work.
+
+[severity med] all non-2xx failures appear to retry for 24 hours, including permanent customer errors — classify responses: retry 408/409/425/429/5xx/network timeouts, but send clear permanent 4xx failures to DLQ or disabled-subscription state sooner.
+QUOTE: "Failed deliveries retry with exponential backoff — 1, 2, 4, 8, up to a maximum interval of 15 minutes — for at most 24 hours"
+QUOTE: "a delivery is acknowledged only after the subscriber returns a 2xx response"
+WHY: This defines every non-2xx as retryable, which makes permanent 400/401/403/404 failures churn for a day without changing outcome.
+
+[severity med] scaling claim ignores per-subscriber ordering, concurrency, and rate limits — state that ordering is not guaranteed, or partition/throttle by subscriber endpoint with explicit per-subscriber concurrency limits.
+QUOTE: "scaling out is a matter of adding consumers to the queue's consumer group"
+WHY: Adding consumers changes parallelism, and without stated partitioning or throttling it can reorder deliveries and overload one subscriber endpoint.
+
+VERDICT — not good as-is; the core shape is solid, but the retry/replay semantics are not precise enough for a webhook delivery system.

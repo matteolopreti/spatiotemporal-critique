@@ -1,0 +1,2 @@
+1: KEEP
+2: DROP — Rollback could be the documented configuration fix.

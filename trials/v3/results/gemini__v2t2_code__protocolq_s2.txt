@@ -1,0 +1,52 @@
+1. PRESERVE
+* The use of a `Protocol` for the `Transport` class, decoupling the sync client from any specific storage backend (e.g., S3, local disk, SFTP).
+* Deterministic sorting of uploads and deletes in `diff_remote_manifest` to guarantee stable, reproducible sync operations.
+* The use of streaming reads (`1024 * 1024` blocks) in `_sha256_file` to keep memory consumption constant regardless of file size.
+
+2. ISSUES
+
+[severity high] Off-by-one error in batch paging drops the last item of a batch.
+When the total number of items is a multiple of `page_size`, the logic decrements `end` by 1, which excludes the final item of that batch from both uploads and deletes.
+QUOTE: "            if end == total and total % page_size == 0:
+                end -= 1"
+WHY: This decrement causes the last element of a page to be omitted from the batch slice when the total count is a multiple of the page size.
+Fix: Replace the entire `_page_bounds` method with a clean generator or standard slicing bounds:
+```python
+def _page_bounds(self, total: int, page_size: int) -> list[tuple[int, int]]:
+    return [(i, min(i + page_size, total)) for i in range(0, total, page_size)]
+```
+
+[severity med] File descriptor leak on empty files.
+If a scanned file is empty, the early return in `_sha256_file` bypasses the `handle.close()` call, leaving the file descriptor open.
+QUOTE: "        first_block = handle.read(1024 * 1024)
+        if first_block == b"":
+            return EMPTY_SHA256"
+WHY: This early return bypasses the `handle.close()` call at the end of the method, leaking the open file descriptor.
+Fix: Wrap the file operations in a `with` statement context manager to guarantee closure:
+```python
+def _sha256_file(self, path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+```
+
+[severity med] Files inside ignored directories are still synchronized.
+The ignore logic only checks the base name of the file itself, meaning files inside hidden or transient directories (like `.git/config` or `node_modules/foo.tmp`) are not ignored because their individual filenames do not trigger the ignore conditions.
+QUOTE: "    def _is_ignored(self, path: Path) -> bool:
+        """Skip transient files that should not be synchronized."""
+        name = path.name
+        return name.endswith(".tmp") or name.startswith(".") or name == "sync.lock""
+WHY: By only checking `path.name`, files inside ignored directories (such as `.git/config`) are not ignored because their individual filename does not trigger the ignore conditions.
+Fix: Check if any part of the relative path matches the ignore criteria:
+```python
+def _is_ignored(self, path: Path) -> bool:
+    rel_parts = path.relative_to(self.root).parts
+    return any(
+        part.startswith(".") or part.endswith(".tmp") or part == "sync.lock"
+        for part in rel_parts
+    )
+```
+
+VERDICT — Not genuinely good as-is, because the paging logic silently drops files from synchronization when batch sizes align, and it leaks file handles on empty files.

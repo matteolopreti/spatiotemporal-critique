@@ -35,7 +35,8 @@
    "kind": "code",
    "author": "claude",
    "decoy": true,
-   "flaws": []
+   "flaws": [],
+   "retired": "2026-07-03 E2 adjudication: three-lineage-convergent unbounded-counter finding sustained as a real defect (docs/08 s12); excluded from clean-decoy grading"
   },
   {
    "file": "v3i6_spec.md",

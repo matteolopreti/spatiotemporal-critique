@@ -1,0 +1,18 @@
+1. PRESERVE
+* The mandatory inclusion of the `X-Relay-Id` idempotency key, which correctly shifts the deduplication responsibility to the subscriber to safely support at-least-once delivery.
+* The 256 KB payload cap and object-storage fallback mechanism, which prevents oversized payloads from degrading queue throughput and consuming excessive worker memory.
+
+2. ISSUES
+[severity high] Server-Side Request Forgery (SSRF) vulnerability — Implement strict DNS resolution validation and blocklist internal IP ranges (such as RFC 1918 and link-local addresses) before dispatching requests.
+QUOTE: "POST it to the subscriber's URL."
+WHY: Blindly POSTing to user-supplied URLs allows malicious subscribers to scan or attack internal network services and metadata endpoints.
+
+[severity high] Worker pool exhaustion due to missing request timeouts — Enforce a strict HTTP connection and read timeout (e.g., 5 to 10 seconds) on all outgoing subscriber requests.
+QUOTE: "a delivery is acknowledged only after the subscriber returns a 2xx response, so subscribers must handle duplicates"
+WHY: If a subscriber's server accepts the TCP connection but hangs indefinitely without returning a response, it will block the delivery worker thread and eventually exhaust the entire worker pool.
+
+[severity med] Thundering herd risk due to lack of backoff jitter — Add randomized jitter to the exponential backoff calculation.
+QUOTE: "Failed deliveries retry with exponential backoff — 1, 2, 4, 8, up to a maximum interval of 15 minutes"
+WHY: Without randomized jitter, retries for a degraded subscriber or during a network recovery window will synchronize, repeatedly hammering the target server and wasting worker capacity.
+
+VERDICT — Not genuinely good as-is; while the high-level queuing and scaling architecture is sound, the design lacks critical network security (SSRF protection) and reliability safeguards (timeouts and jitter) necessary for a public-facing webhook service.

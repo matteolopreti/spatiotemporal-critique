@@ -1,0 +1,16 @@
+1. PRESERVE
+* Clear, descriptive docstrings that explicitly document the behavior and the raised exception.
+* Robust and simple conditional logic in the core `clamp` function.
+
+2. ISSUES
+[severity med] validation bypass on empty input — Add an explicit `low > high` check at the start of `clamp_all` to ensure consistent validation behavior even when `values` is empty.
+QUOTE: "def clamp_all(values, low, high):"
+QUOTE: "    return [clamp(v, low, high) for v in values]"
+WHY: If `values` is empty, the list comprehension completes immediately and returns `[]` without ever calling `clamp`, failing to raise a `ValueError` when `low > high`.
+
+[severity low] redundant validation in loop — Move the validation check out of the loop or inline the clamping logic in `clamp_all` after a single validation check to avoid $O(N)$ redundant comparisons.
+QUOTE: "    if low > high:"
+QUOTE: "    return [clamp(v, low, high) for v in values]"
+WHY: The `low > high` validation is executed repeatedly for every single element in `values` during the list comprehension, introducing unnecessary performance overhead.
+
+VERDICT — Genuinely good as-is for small datasets, but needs a validation guard in `clamp_all` to guarantee consistent error handling on empty inputs.

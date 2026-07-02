@@ -1,0 +1,20 @@
+1. PRESERVE
+- The use of a durable queue for event persistence.
+- The `X-Relay-Id` header for client-side idempotency.
+- The 256 KB payload cap with an object storage fallback for large payloads.
+- The stateless worker architecture to allow for horizontal scaling.
+
+2. ISSUES
+[High] Retrying non-retryable errors — The design treats all non-2xx responses as retryable failures, which will cause the system to waste resources retrying permanent client errors (e.g., 400 Bad Request or 401 Unauthorized).
+QUOTE: "a delivery is acknowledged only after the subscriber returns a 2xx response"
+WHY: This logic fails to distinguish between transient network/server errors and permanent configuration errors on the subscriber's end, which should result in immediate DLQ routing.
+
+[High] Ordering breakdown during scaling — Scaling consumers by adding them to a consumer group without a partition key will cause events from the same source to be delivered out of order.
+QUOTE: "scaling out is a matter of adding consumers to the queue's consumer group."
+WHY: Without partitioning (e.g., hashing an entity ID), concurrent workers can process messages from the same stream simultaneously, leading to `Order_Deleted` being processed before `Order_Created`.
+
+[Med] Replay attack vulnerability — The design does not specify including a timestamp or nonce in the signed payload.
+QUOTE: "sign each payload, and POST it to the subscriber's URL."
+WHY: Without a time-bound component included in the signature calculation, an attacker who intercepts a valid webhook can replay that exact request indefinitely.
+
+VERDICT — This is a solid foundation but fails on two critical distributed systems requirements: error classification (retrying 4xx) and ordering guarantees during horizontal scaling.

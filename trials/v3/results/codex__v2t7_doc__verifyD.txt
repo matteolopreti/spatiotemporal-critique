@@ -1,0 +1,3 @@
+1: DROP — "No migration steps" is clear and standard phrasing.
+2: DROP — "Ships today" is standard for release announcements.
+3: DROP — Shorthand paths are standard in high-level release notes.

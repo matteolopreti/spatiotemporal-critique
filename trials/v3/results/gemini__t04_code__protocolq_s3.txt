@@ -1,0 +1,14 @@
+1. PRESERVE
+* The clear, explicit `ValueError` raised when `low > high` in the `clamp` function.
+* The simple, readable implementation of the boundary checks using standard comparison operators.
+
+2. ISSUES
+[severity med] bypassed range validation on empty input — If `values` is empty, `clamp_all` returns an empty list instead of raising a `ValueError` when `low > high`. Fix this by validating that `low <= high` at the start of `clamp_all` before processing the list.
+QUOTE: "    return [clamp(v, low, high) for v in values]"
+WHY: When `values` is empty, the list comprehension completes immediately without ever calling `clamp`, thereby bypassing the `low > high` validation check.
+
+[severity low] redundant range validation in loop — The `low > high` validation is executed on every iteration of the list comprehension, causing $O(N)$ redundant checks. Fix this by validating the range once at the start of `clamp_all` and using a helper or direct comparisons that skip the check during iteration.
+QUOTE: "    return [clamp(v, low, high) for v in values]"
+WHY: This list comprehension calls `clamp` for every element, which repeatedly executes the `low > high` check inside `clamp` instead of validating the range once.
+
+VERDICT — Not genuinely good as-is, because it silently allows invalid ranges (where `low > high`) to pass without error if the input list is empty, and performs redundant validation checks in a loop.

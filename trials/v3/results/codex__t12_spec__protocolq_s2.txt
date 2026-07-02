@@ -1,0 +1,25 @@
+1. PRESERVE — Durable queue, at-least-once delivery semantics, explicit idempotency key, bounded retry window, DLQ/replay path, stateless horizontally scalable workers, and the 256 KB payload cap are all concrete and worth keeping.
+
+2. ISSUES —
+[severity high] No worker timeout or concurrency isolation is specified, so slow or hanging customer endpoints can exhaust delivery capacity — define connect/read/total timeouts, per-endpoint concurrency limits, and failure accounting per attempt.
+QUOTE: "delivery workers consume the queue, sign each payload, and POST it to the subscriber's URL."
+WHY: A POST to an arbitrary subscriber URL can hang unless the design explicitly bounds request duration and worker occupancy.
+
+[severity high] Retry state is underspecified despite stateless workers, so attempt count, next retry time, and 24-hour expiry may be lost or inconsistently applied — persist `attempt_count`, `first_attempt_at`, `next_attempt_at`, and terminal state in the queue system or a delivery table.
+QUOTE: "Workers hold no local state;"
+QUOTE: "Failed deliveries retry with exponential backoff — 1, 2, 4, 8, up to a maximum interval of 15 minutes — for at most 24 hours"
+WHY: Stateless workers cannot themselves remember retry schedule or expiry; that state must be durable somewhere.
+
+[severity med] Arbitrary subscriber URLs create SSRF and internal-network delivery risk — validate URL schemes, block private/link-local/metadata IP ranges after DNS resolution, and enforce egress policy at the network layer.
+QUOTE: "POST it to the subscriber's URL."
+WHY: The design allows workers to make outbound requests to customer-controlled destinations without stating any network safety boundary.
+
+[severity med] Payload signing is too vague to be interoperable or replay-resistant — specify canonical payload bytes, HMAC algorithm, timestamp header, signature version, tolerated clock skew, and secret rotation.
+QUOTE: "sign each payload"
+WHY: “Sign each payload” does not define what subscribers verify or how old captured requests are rejected.
+
+[severity med] Large-event references change the delivery contract and can fail later — define signed URL expiry, access control, checksum, object retention, and whether the reference itself is covered by the webhook signature.
+QUOTE: "larger events must be sent as a reference to object storage."
+WHY: A reference is not equivalent to an inline payload unless availability, integrity, and authorization are specified.
+
+VERDICT — Not good as-is; the core shape is sound, but the missing timeout, durable retry-state, URL safety, and signing details are correctness-critical for a webhook delivery service.

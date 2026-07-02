@@ -1,0 +1,28 @@
+## 1. PRESERVE
+
+* **Quantifiable, multi-dimensional promotion gates:** Enforcing explicit, measurable thresholds for p95/p99 latency, CPU/memory utilization, and error-budget burn rates prevents subjective or rushed promotion decisions.
+* **Fully provisioned 60-minute rollback window:** Keeping the previous primary color at 100% capacity for an hour post-promotion guarantees an instantaneous, safe rollback path without risking capacity exhaustion or cold-start latency spikes.
+* **Strict expand-contract database phase separation:** Requiring contract migrations to run only after the previous primary is retired ensures that concurrent execution of two different application versions never triggers database-level runtime errors.
+
+## 2. ISSUES
+
+[severity high] Low-traffic mathematical deadlock — Introduce a minimum absolute error count threshold (e.g., "or fewer than 5 total failed requests") for gates that time out via the 30-minute rule.
+QUOTE: "Candidate HTTP 5xx rate is 0.20% or lower, measured as no more than 20 failed requests per 10,000 candidate requests."
+QUOTE: "A gate with fewer than 10,000 candidate requests must be extended until it has at least 10,000 candidate requests or has observed traffic for 30 minutes, whichever happens first."
+WHY: If a low-traffic service times out at 30 minutes with only 100 requests, a single 5xx error (1.0%) will violate the 0.20% threshold and trigger an unnecessary rollback.
+
+[severity high] Active web traffic queue starvation during rollback — Never disable candidate background workers while candidate web traffic is still actively routed to the candidate color; web traffic must always be set to 0% first.
+QUOTE: "Disable candidate background workers before disabling candidate web traffic only if duplicate asynchronous processing is observed. Otherwise, shift web traffic first, then stop candidate workers."
+WHY: Shutting down background workers while the candidate is still receiving live web traffic will cause all newly enqueued asynchronous jobs from those active users to fail or pile up unprocessed.
+
+[severity med] Data "holes" in new schema fields during rollback — Require a mandatory data-reconciliation or backfill script to run after any rollback before a new promotion can be attempted, or enforce database-level defaults/triggers to keep new fields populated.
+QUOTE: "Writes to new fields may begin only after the expand migration is complete in production."
+QUOTE: "Reads from new fields must include fallback behavior until the contract release is complete."
+WHY: If the candidate writes to new fields and a rollback occurs, the old primary (which does not write to the new fields) will create/update records without populating those fields, leaving data inconsistencies when a corrected candidate is later promoted.
+
+[severity low] Absence of an emergency bypass/override protocol — Define an "Emergency Promotion Protocol" requiring dual-operator approval to bypass specific gates (like the 60-minute observation window) for critical hotfixes or zero-day security patches.
+QUOTE: "The minimum production observation time before the 100% shift is 60 minutes: 10 minutes at 1%, 20 minutes at 10%, and 30 minutes at 50%."
+WHY: This rigid minimum observation time applies universally, preventing rapid deployment of critical security hotfixes or emergency patches when the platform is actively degraded.
+
+## VERDICT
+VERDICT — Not genuinely good as-is, because the low-traffic gate logic introduces a mathematical deadlock that will block deployments on low-volume services, and the rollback worker-shutdown sequence risks dropping active customer transactions.

@@ -1,0 +1,16 @@
+1. PRESERVE
+- The specific performance metric (30% reduction on ledgers with >50,000 entries).
+- The CSV preview feature (first ten rows before committing).
+
+2. GENERIC
+"quality-of-life improvements requested by accounting teams."
+Alternative: "workflow optimizations tailored to high-volume accounting."
+QUOTE: "quality-of-life improvements requested by accounting teams."
+WHY: This is a standard corporate filler phrase that fails to describe the actual functional changes made to the software.
+
+"supported devices"
+Alternative: "biometric authentication on compatible hardware."
+QUOTE: "fingerprint unlock on supported devices."
+WHY: "Supported devices" is a generic placeholder that avoids specifying which mobile platforms or hardware models are actually compatible.
+
+VERDICT — This is a solid, professional release note, but it relies too heavily on "safe" corporate phrasing that obscures the actual value of the updates.
