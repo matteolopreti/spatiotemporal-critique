@@ -6,7 +6,7 @@ Helper: `external_critic.py` (dependency-free, stdlib only; returns PRESERVE / I
 
 ## How to weight it
 
-- **Independence, not authority.** Agreement with the primary model is strong corroboration; a lone external claim (an open model is usually weaker) is a contested point to surface, not a verdict. Mandate 3 (discerning solver) governs — the reviser rejects it where it's wrong.
+- **Independence, not authority.** Agreement *across lineages* is strong corroboration — agreement between two seats of the **same** lineage is near-uninformative (shared weights, shared blind spots). A lone external claim (an open model is usually weaker) is a contested point to surface, not a verdict. Mandate 3 (discerning solver) governs — the reviser rejects it where it's wrong. And a seat's clean VERDICT never *certifies* the work; a critic can only raise problems or fail to raise them — clearance stays with you.
 - **Abstention is honest signal.** A seat may answer `ABSTAIN: <what> — <why>` where it can't genuinely judge; treat that as a **coverage gap to report, never agreement**. Appropriate abstention distinguishes a weak-but-genuine critic from a null one that fills the page.
 - **Scope.** It strengthens the *perspective* and *overfitting* axes, and — like any reviewer (see Origin's *doubt the spec*) — may *surface* intent-level doubt (alternative readings, severe tests) for the user to adjudicate; it cannot *unilaterally* confirm meaning, since only the user can settle the goal.
 - **Where it runs.** Anywhere the helper can execute — a local Ollama on `localhost:11434`, or outbound HTTPS to a cloud endpoint (`CRITIC_BASE_URL`). It needs a tool-executing context (agentic/CLI), not a hosted chat with no shell.
@@ -37,6 +37,19 @@ Cloudflare and Perplexity serve **no `GET /models`**, so `--discover`/`--configu
 *Current picks (as of 2026-07 — perishable, verify before trusting): `gemini-3.5-flash`; via Cloudflare `@cf/zai-org/glm-5.2`, `@cf/moonshotai/kimi-k2.7-code` (code), `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b`; `sonar-pro`. Refresh this one line by hand; the table above is the part that lasts.*
 
 "Auto-update to the newest best model" can't be fully automated — *best* is a human judgment that changes monthly, and there's no clean registry query for it. The achievable design is config-first + a small **ranked preference list** (best first) the setup tries in order — reusing the strongest model you already have, else pulling a light default — refreshed by hand. And for reproducible work (scientific or code), **pin and log** the critic model used for a given review rather than silently auto-bumping mid-run — auto-update to stay current; pin+log (model, seed, params) so a review is auditable and reproducible on the same build (tags are mutable — re-pin after a re-pull). This is the same logged-trace discipline the Temporal axis and the assumptions ledger already use: record which critic produced the critique.
+
+## Trust contract — verify every claim yourself
+
+Every guarantee the docs make is checkable by command, on artifacts the tools write — never take the prose's word for it:
+
+| Claim | Verify with | Artifact it writes |
+|---|---|---|
+| Seats are certified by a **deterministic** probe, not LLM judgment | `python3 external_critic.py --probe` (grader is plain string-matching — read `grade_probe`/`score_probe`) | `critic_registry.tsv` (append-only; newest record per seat wins) |
+| **Paid calls are spend-gated** — nothing spends without consent | run `<file> --panel` non-interactively: paid seats print `SKIP … re-run with --yes` | the skipped seat appears in the run output |
+| Every critique run is **pin-logged** (model + params, reproducible) | run any critique, then read the log | `critique.log` (timestamp · model · endpoint · temp/seed · artifact) |
+| A **quota-dead or vetoed seat is discarded** from suggestions | `--configure` after a 429/`--retire`: the seat shows `blocked`/`retired` and leaves the suggestion | `critic_registry.tsv` (UNAVAILABLE/RETIRED records) |
+| The suggested panel is **lineage-diverse** and never Claude-lineage | `--configure` (read the suggestion line: one seat per family) | `critic_panel.json` (each seat's recorded lineage) |
+| **Keys never touch disk or history** | keys live only in the OS secret store (`security`/`secret-tool`) and are read per run | nothing — that's the point; `grep -r sk- .` finds no key |
 
 ## Capability detection — availability ≠ capability
 
@@ -128,7 +141,7 @@ The optional **`critic-env <provider> [model]`** shell function (installed by `c
 **Subscription CLIs — seats with no key at all.** Two agent CLIs are auto-detected on PATH, each cost tier **`sub`** (they run on the CLI's own login — no API key, no per-call bill, so `--panel` does **not** spend-gate them; paid *APIs* still ask every time):
 
 - **OpenAI Codex CLI** (`codex`) → seat `codex-default` (GPT lineage): critiques route through `codex exec` in a read-only sandbox on your ChatGPT plan.
-- **Gemini CLI** (`gemini`) → seat `gemini-default` (Gemini lineage): critiques route through the CLI's non-interactive mode on your Google account's free tier. **Authenticate once first** — run `gemini` interactively and log in; an unauthenticated CLI probes as UNAVAILABLE and shows `blocked` until you do.
+- **Gemini CLI** (`gemini`) → seat `gemini-default` (Gemini lineage): critiques route through the CLI's non-interactive mode on your Google login. **Authenticate once first** — run `gemini` interactively and log in; an unauthenticated CLI probes as UNAVAILABLE and shows `blocked`. *Caveat (observed 2026-07):* Google deprecated the free individual Code Assist tier on recent CLI versions (`IneligibleTierError` → "migrate to Antigravity"); if your login is ineligible the seat stays `blocked` — use the **`google` API provider** for the Gemini lineage instead (it has its own free API tier).
 
 Probe either directly: `CRITIC_BASE_URL=codex-cli python3 external_critic.py --probe` (or `gemini-cli`). `CRITIC_MODEL` is deliberately ignored on these seats (it names Ollama/cloud ids; leaking it into a CLI's `-m` would 400 and mis-register) — use `CRITIC_CODEX_MODEL` / `CRITIC_GEMINI_MODEL` for an explicit CLI model. Plan rate limits still apply — a quota failure is recorded like any other and the seat drops to `blocked`. (A **Perplexity Pro subscription is not API access**: the API credit must be enabled at perplexity.ai/settings/api before `sonar-*` seats can run; until then they'll record `insufficient_quota` and be discarded from suggestions.)
 

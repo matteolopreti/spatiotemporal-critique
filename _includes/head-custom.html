@@ -1,0 +1,25 @@
+<!-- Operational docs (read by Claude, not by search users): keep them crawlable for
+     link equity but out of the index — the homepage carries the search authority.
+     Also fixes SKILL.md's verbose skill-manifest description leaking into meta tags. -->
+{% if page.path == "SKILL.md" or page.path == "EXTERNAL_CRITIC.md" %}
+<meta name="robots" content="noindex, follow">
+{% endif %}
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareSourceCode",
+  "name": "Spatiotemporal Critique",
+  "alternateName": "spatiotemporal-critique",
+  "description": "{{ site.description | strip_newlines }}",
+  "applicationCategory": "DeveloperApplication",
+  "codeRepository": "https://github.com/matteolopreti/spatiotemporal-critique",
+  "url": "{{ '/' | absolute_url }}",
+  "programmingLanguage": "Python",
+  "runtimePlatform": "Claude Code",
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  {% if site.github.latest_release %}"softwareVersion": "{{ site.github.latest_release.tag_name }}",{% endif %}
+  "author": { "@type": "Person", "name": "Matteo Lopreti", "url": "https://github.com/matteolopreti" }
+}
+</script>

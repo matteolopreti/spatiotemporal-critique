@@ -1,3 +1,7 @@
 theme: jekyll-theme-cayman
 title: Spatiotemporal Critique
-description: Balanced, preserve-first code & writing review — with an independent external-model critic
+description: Balanced AI code review for Claude Code — a skill + multi-model critic panel for a genuinely independent second opinion
+image: /assets/social-preview.png
+plugins:
+  - jekyll-sitemap          # emits sitemap.xml + robots.txt (GH Pages safelisted)
+  - jekyll-relative-links   # rewrites .md links to .html so SKILL.md links work on Pages

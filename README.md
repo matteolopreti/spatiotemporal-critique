@@ -5,9 +5,19 @@
 [![Claude skill](https://img.shields.io/badge/Claude-skill-d97757)](SKILL.md)
 [![External critic: Ollama or cloud](https://img.shields.io/badge/external%20critic-Ollama%20%7C%20cloud-555)](EXTERNAL_CRITIC.md)
 
-A review protocol that replaces the lone "critic persona." A lone critic only hunts for flaws: it invents problems, misses what you actually wanted, and breaks things that were already fine. This protocol runs a **balanced, intent-anchored** review instead — in two modes, *awake* (converge) and *asleep* (diverge) — sizes itself to the task (trivial work gets no ceremony), and can add a **genuinely external viewpoint**: a different model family, local or cloud, so the second opinion isn't just you again.
+**Spatiotemporal Critique is a free, open-source [Claude Code](https://www.claude.com/product/claude-code) skill for balanced AI code and writing review.** Instead of one model hunting for flaws — inventing problems, missing what you actually wanted, breaking what already worked — it runs a structured, **preserve-first** review protocol, and can add a **genuinely independent second opinion from a different model family** (a local Ollama model, the Codex CLI on your subscription, or Gemini / GLM / DeepSeek in the cloud), so the review isn't the same model critiquing itself.
 
-The lone critic fails in several overlapping ways; the framework answers them **many-to-many** — one failure can need several stages, and one stage can answer several failures:
+*The name, decoded:* **spatial** = several independent angles on the work as it stands; **temporal** = checking the history of edits for what broke and what's about to.
+
+**Get it as a Claude Code skill — one command:**
+
+```bash
+git clone https://github.com/matteolopreti/spatiotemporal-critique ~/.claude/skills/spatiotemporal-critique
+```
+
+Restart Claude Code and ask: *"give me a real review of this before I ship it."* No Python package dependencies — markdown + stdlib Python (the optional external panel additionally needs a local Ollama model, an agent CLI you already have, or a cloud key). Not on Claude Code? The protocol works as a pasted prompt with any AI assistant — presets in [SKILL.md](SKILL.md).
+
+The lone critic fails in several overlapping ways; the framework answers them **many-to-many** — one failure can need several stages, and one stage can answer several failures (every mechanism named here is defined in the spec below):
 
 - Manufactures problems, breaks good parts (Reviewer-2 bias) → **the four mandates**
 - Wrong target — *mis-set*, *drifted*, or *stale* → **Origin** + the **Temporal anchor** (catches drift) + the **second-order net-improvement gate** (re-tests a stale rubric)
@@ -27,15 +37,35 @@ The lone critic fails in several overlapping ways; the framework answers them **
 - *Lone critic:* "No jitter, magic number `5`, use exponential backoff — rewrote it for you." Invents a requirement, rewrites working code, never asks the goal.
 - *Spatiotemporal:* keeps the capped-retry + logging that handle the real failure mode; steelmans the fixed `5` for a fail-fast CLI; asks "bounded latency, not max reliability — confirm?"; flags the one real bug (unbounded sleep on the final attempt); verdict — one fix, ship the rest.
 
+**And here it is for real** — a GPT-lineage panel seat reviewing *this repo's own v4.10 release diff* (every release self-gates through the panel; output verbatim, trimmed):
+
+```text
+=== PANEL CRITIC: codex-default [gpt]  (codex-cli) ===
+1. PRESERVE — `CLI_SEATS` is the right direction: Codex/Gemini are centralized,
+   CRITIC_MODEL is prevented from leaking into CLI `-m`, and endpoint-keyed
+   registry records preserve "same model id, different transport" separation.
+2. ISSUES —
+[severity high] `--init` can save a failed/null seat — `_candidate_rows()` maps a
+   latest FAIL to "unprobed", so a seat that just failed the probe can still be
+   suggested and written. Fix: represent FAIL as "failed" and exclude it.
+[severity high] `--retire MODEL` is not a reliable veto — records are keyed
+   (model, endpoint) but do_retire() writes only to the current endpoint.
+VERDICT — not good as-is: the design is sound, but the FAIL→unprobed path can
+   make the zero-config bootstrap remember a bad seat.
+```
+
+Four of its five findings were accepted and fixed before the release shipped; one was rejected after steelmanning — which is exactly the protocol working (mandate 3: the reviser may reject a critique it judges wrong).
+
 ---
 
 ## Install
 
-The protocol itself is a *procedure* — nothing to install; paste the presets from [SKILL.md](SKILL.md). The optional **external critic** is a small stdlib-only Python helper:
+**As a Claude Code skill (recommended):** the one-command clone at the top of this page. Claude matches on it automatically whenever you ask for a real review, critique, or second opinion. **No Claude Code?** Nothing to install at all — paste the presets from [SKILL.md](SKILL.md) into any AI assistant.
+
+**The external critic panel** (optional, what makes the second opinion *independent*) is a small stdlib-only Python helper:
 
 ```bash
-git clone https://github.com/matteolopreti/spatiotemporal-critique
-cd spatiotemporal-critique
+cd ~/.claude/skills/spatiotemporal-critique   # or wherever you cloned it
 
 # 1 · zero-config: detect + score everything this machine can field, remember a panel.
 #     (local Ollama models, and the codex / gemini CLIs if you have them — free/sub only)
@@ -116,7 +146,7 @@ They bind at two layers — not inside each critic. Each critic is **one source'
 | **Supervision** | human → Origin's severe tests go to the user · autonomous → corroborate vs held-out examples, escalate only high-blast-radius |
 | **External** | off → in-session panel only · on → a different-lineage model joins the Spatial panel (Full preset / code review) |
 
-**Presets:** *Quick* (one paste, one context) · *Standard* (panel + one backward check) · *Full* (separate-call critics, full temporal, a sleep pass, external reviewer on). The paste prompts for **Quick** and **Standard** live in **[SKILL.md](SKILL.md)** (the operating procedure) — paste from there.
+**Presets:** *Quick* (one paste, one context) · *Standard* (panel + one backward check) · *Full*. The paste prompts for **Quick** and **Standard** live in **[SKILL.md](SKILL.md)** (the operating procedure) — paste from there. *Full* is not a paste: it is Standard **plus** the external panel (`--panel`), the full temporal pass over real history, and a sleep pass — the skill assembles it when the stakes warrant it.
 
 ---
 
@@ -185,8 +215,8 @@ One model in one session only *approximates* independence (same weights, correla
 
 | Command | What it does |
 | --- | --- |
-| `--init` | **Zero-config bootstrap.** Detects local Ollama models and subscription CLIs (codex, gemini), scores every free/sub seat, and remembers the suggested panel — one command, no choices. Paid APIs are never auto-probed. |
-| `--probe` | **Certify the seat.** Availability ≠ capability: a reachable model can still be a *null* seat that summarizes instead of critiquing. The probe plants known flaws and scores how many the seat *names* (deterministic grader, no LLM). Results accumulate in a per-machine registry. `--probe-all` scores **every installed local model in one command**, ranked. `--retire MODEL` is the human veto for a seat that passes the probe but proves useless in practice. |
+| `--init` | **Zero-config bootstrap** — *of what's already on the machine*: it detects and scores local Ollama models and subscription CLIs (codex, gemini) and remembers the suggested panel — one command, no choices, never two seats from one model family, never a Claude-lineage seat. It selects; it doesn't provision — you bring at least one local model, CLI, or key. Paid APIs are never auto-probed. |
+| `--probe` | **Floor-certify the seat.** Availability ≠ capability: a reachable model can still be a *null* seat that summarizes instead of critiquing. The probe plants known flaws and scores how many the seat *names* (deterministic grader, no LLM) — a **floor**, not a full warranty (a seat can pass small and still null on large artifacts; the faithful probe and `--retire` cover that gap). Results accumulate in a per-machine registry. `--probe-all` scores **every installed local model in one command**, ranked. `--retire MODEL` is the human veto for a seat that passes the probe but proves useless in practice. |
 | `--discover` | **List what a key can serve**, newest-first, with cost tier + probe score — so you never hard-code a model that rots. |
 | `--configure` | **Pick + remember a panel** of 1–3 capable seats across *distinct* model families (independence = diversity). Enter/`--auto` accepts a score-ranked, free-first suggestion; the choice persists in `critic_panel.json` and new models get flagged on re-runs. |
 | `<file> --panel` | **Run the remembered panel.** Every seat critiques the file; each view prints as a *contested* input for your synthesis. Paid seats ask before spending (`--yes` to allow); one dead seat never sinks the panel; every run is pin-logged (model + params) for reproducibility. |
@@ -216,6 +246,30 @@ Supported providers (each a different lineage from Claude): `openai` · `google`
 
 ---
 
+## FAQ
+
+### Is this a Claude Code skill or a prompt I paste?
+
+Both. Cloned into `~/.claude/skills/`, it's a native Claude Code skill — Claude applies the protocol automatically when you ask for a review. Without Claude Code, the [Quick and Standard presets](SKILL.md) are self-contained prompts that work pasted into any AI assistant.
+
+### How do I get an AI code review that isn't one-sided?
+
+The one-sided review is a *structural* problem: a critic prompted only to find flaws will find flaws, real or not. This protocol makes balance structural instead — the reviewer must first list what works and must survive the edit (preserve-first), argue for your existing choices before striking them (steelman), and is allowed to conclude "leave it alone."
+
+### What makes the second opinion actually independent?
+
+Lineage. Two calls to the same model share the same weights and the same blind spots — same-lineage agreement is close to no evidence. The panel routes your work to *different model families* (Gemma/Gemini, GPT, GLM, DeepSeek…), certifies each seat with a deterministic capability probe before trusting it, and treats cross-lineage agreement as corroboration and disagreement as a flagged, contested point. The suggested panel is *structurally* diverse: it never picks two seats from one family, and never a Claude-lineage seat. Every trust claim here is verifiable by command — see the [trust contract](EXTERNAL_CRITIC.md#trust-contract--verify-every-claim-yourself).
+
+### Is it free? Does it work offline?
+
+Yes and yes. A local Ollama model costs nothing and nothing leaves your machine; the OpenAI Codex CLI rides a subscription you may already have. Cloud API seats are optional, keyed per provider from your OS secret store, and every paid call asks first.
+
+### What if the external critic disagrees with Claude?
+
+Disagreement is signal, not a verdict. The synthesis surfaces it as a *contested point* for you to weigh — the external critique is input, never authority, and the reviser may reject it where it's wrong (mandate 3). A critic can also explicitly **abstain** rather than fabricate a finding; that's reported as a coverage gap, not agreement.
+
+---
+
 ## Change log
 
 **Self-gated.** From v4.0 on, every version bump must first pass this protocol run on its own spec (preserve-list · three highest-leverage issues · net-improvement gate). **Extension/refactor releases** must also be net lines-removed ≥ lines-added — the standing defense against bloat-on-extension. **Bugfix and explicitly-scoped feature releases are exempt from the line-count test** (a fix or a requested capability can't always shrink the tree), but must still justify every added line and consolidate any prose they touch.
@@ -238,3 +292,4 @@ Supported providers (each a different lineage from Claude): `openai` · `google`
 - **v4.8** — **keys resolve from the OS secret store directly** (bugfix: the docs promised it, but only the optional `critic-env` shell helper delivered it — now `--panel`, `--configure`, *and* plain runs find `critic-api-key-<provider>` on their own; Windows uses per-provider env vars). New providers: **Cloudflare Workers AI** (one key, many lineages, free daily allocation; `CLOUDFLARE_ACCOUNT_ID` fills the per-account URL) and **Perplexity** — both lack `GET /models`, so discovery falls back to a hand-refreshed `STATIC_MODELS` list; multi-lineage providers now infer each seat's lineage from the model id. Lineage table gained gemma/kimi/sonar. **Retired** `gpt-oss:20b` and `deepseek-r1:14b` (reachable but null on real artifacts); `gemma4:12b` promoted (probed 2/2). README reworked: install, API keys, panel life-cycle, concise changelog.
 - **v4.9** — closes the two items deferred since v4.0, and widens the capability system. **Abstention channel**: any critic may answer "ABSTAIN: what — why" instead of fabricating; synthesis treats it as a coverage gap, never agreement. **Confidence-term audit**: the three-level vocabulary (corroborated / contested / hypothesis) is now defined once and used consistently — no self-reported percentages. **Probe battery v2**: three planted flaws (contradiction · impossible number · circular order), score 0–3; scores are comparable per battery version. **`--probe-all`**: score every installed local Ollama model in one command, ranked. **Subscription seats**: the OpenAI Codex CLI is auto-detected (`codex-cli` transport, cost tier `sub`, GPT lineage) — plan-covered, keyless, not spend-gated; paid APIs still ask. **Quota-discard**: a seat that fails on quota is recorded and drops out of panel suggestions (`blocked`) until a re-probe passes — a seat with no tokens is not a seat.
 - **v4.10** — **onboarding + honesty about the probe's limits.** New **`--init`**: zero-config bootstrap — detect local Ollama models and subscription CLIs, score every free/sub seat, remember the suggested panel; one command, no choices, nothing paid touched (this is the fresh-install path, and the skill runs it autonomously when no panel exists). New **`--retire MODEL`** — the human veto: the floor probe is a floor and can false-pass (observed: seats that named every planted flaw yet stayed null on real artifacts); a RETIRED record beats the PASS until a deliberate re-probe. **Liveness check**: registry rows for local models no longer installed drop out automatically. **Gemini CLI** joins Codex as a second auto-detected subscription seat (`gemini-cli`, Gemini lineage, Google login; `CRITIC_GEMINI_MODEL` overrides). CLI seats generalized into one table (`CLI_SEATS`).
+- **v4.11** — **discoverability** (a scoped docs/site release; the review protocol is untouched). README restructured tool-first: a self-contained definition + the one-command skill install in the first screenful, a *real* self-gate transcript as proof (v4.10's panel review, verbatim), an FAQ in the question forms people actually search, and the install section split (skill path vs. optional external critic). Site plumbing: social-preview image (`og:image`), `llms.txt` for AI-crawler orientation, `jekyll-sitemap` (sitemap + robots), `jekyll-relative-links` (fixes the `SKILL.md` badge link 404 on GitHub Pages), `SoftwareSourceCode` + author JSON-LD, `noindex,follow` on the operational docs (their reader is Claude, not a search user — also stops the skill manifest's verbose description leaking into meta tags), and a search-matched site title/description ("Claude Code" now actually appears on the page). Driven by a four-agent SEO/GEO/SXO/content audit; the substance of the spec was deliberately left alone (preserve-first applies to marketing too). Self-gated by a live two-lineage panel (gemma + codex) on the full spec+procedure bundle: both seats independently flagged claim-inflation ("zero-config", "no dependencies", "certify") — all qualified; the corroboration rule was sharpened to **lineage** (same-lineage agreement is near-uninformative), the Full preset's contract stated plainly, the temporal trace's default source (git) named, and a verify-it-yourself **trust contract** table added to EXTERNAL_CRITIC.md. Rejected after steelman: simulating a panel inside the Quick preset (it exists to be the smallest useful unit).

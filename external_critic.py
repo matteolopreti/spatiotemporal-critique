@@ -240,8 +240,11 @@ def _call_cli(seat, model, system, prompt):
     cmd = ["gemini", "-p", system] + (["-m", model] if explicit else [])
     r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=600)
     if r.returncode != 0 or not r.stdout.strip():
-        tail = (r.stderr or r.stdout).strip().splitlines() or ["no output"]
-        raise RuntimeError(f"gemini failed ({r.returncode}): {tail[-1][:200]}")
+        # Node CLIs end with a stack trace; the useful line is the LAST one naming an
+        # error (e.g. IneligibleTierError), not the final stack frame.
+        lines = f"{r.stderr or ''}\n{r.stdout or ''}".strip().splitlines() or ["no output"]
+        err = next((l for l in reversed(lines) if "error" in l.lower()), lines[-1])
+        raise RuntimeError(f"gemini failed ({r.returncode}): {err.strip()[:200]}")
     return r.stdout.strip()
 
 
@@ -1104,9 +1107,11 @@ def do_panel(artifact_path, brief, intent, mode, depth, assume_yes):
         print("\nno seat produced a critique (all skipped/unavailable). Check your keys, "
               "Ollama, or `--configure`.")
         return 1
-    print(f"\n=== {ran} seat(s) ran. SYNTHESIZE (don't average): agreement across seats is strong "
-          "corroboration; a lone claim is a CONTESTED point to weigh — you are the reducer. "
-          "An ABSTAIN is a COVERAGE GAP, not agreement: note what no seat could judge. ===")
+    print(f"\n=== {ran} seat(s) ran. SYNTHESIZE (don't average, don't vote): read DISAGREEMENT first — "
+          "it marks where to look. Agreement across LINEAGES is corroboration, NEVER proof (vendors "
+          "share training data); same-lineage agreement is near-uninformative (shared blind spots). "
+          "Emit the union of findings, disagreement-first — no combined verdict, no green light. A lone "
+          "claim is CONTESTED — you are the reducer. An ABSTAIN is a COVERAGE GAP, not agreement. ===")
     return 0
 
 
