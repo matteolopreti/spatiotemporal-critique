@@ -65,9 +65,11 @@ Config (env / .env — a set, non-empty env var always wins):
                    and verify the exact tag on ollama.com/library — these move
                    monthly. For reproducible work, pin the tag per review and
                    record which model produced the critique.
-    CRITIC_LOG     default: critique.log next to this script — per-run pin+log
-                   (model, seed, params); --no-log to skip.
-    CRITIC_REGISTRY default: critic_registry.tsv next to this script — the
+    CRITIC_LOG     default: critique.log in ~/.config/spatiotemporal-critique —
+                   ONE per-user state home shared by every install and project
+                   (legacy files next to the script migrate on first use) —
+                   per-run pin+log (model, seed, params); --no-log to skip.
+    CRITIC_REGISTRY default: critic_registry.tsv in the same per-user home — the
                    capability-probe log {date · model · lineage · probe · cost}.
     .env           setup.sh writes its chosen model here (real env vars win).
     CRITIC_BASE_URL  set → OpenAI-compatible endpoint, base incl. the version path
@@ -139,6 +141,32 @@ def _cfg(key, default):
     return os.environ.get(key) or _DOTENV.get(key) or default
 
 
+def _state_path(filename):
+    """Machine-local state (registry / remembered panel / pin+log) lives in ONE
+    per-user home — ~/.config/spatiotemporal-critique (XDG_CONFIG_HOME honored) —
+    so every install (dev clone, plugin cache, any project) shares the same
+    certified panel, and a plugin update can't wipe it (the plugin cache dir is
+    replaced wholesale on update; state written next to the script died there).
+    A legacy file next to this script is migrated (copied, kept) on first use;
+    an unwritable home falls back to the legacy next-to-script behavior."""
+    home = os.path.join(os.environ.get("XDG_CONFIG_HOME")
+                        or os.path.join(os.path.expanduser("~"), ".config"),
+                        "spatiotemporal-critique")
+    try:
+        os.makedirs(home, exist_ok=True)
+    except OSError:
+        return os.path.join(_HERE, filename)
+    path = os.path.join(home, filename)
+    legacy = os.path.join(_HERE, filename)
+    if not os.path.exists(path) and os.path.exists(legacy):
+        try:
+            shutil.copy2(legacy, path)
+            print(f"(one-time migration: {filename} -> {path})", file=sys.stderr)
+        except OSError:
+            return legacy
+    return path
+
+
 # Subscription CLI seats: agent CLIs on PATH run on the user's own plan/account —
 # no API key here, no per-call bill (cost tier "sub"; --panel does not spend-gate them).
 # Auth lives in the CLI itself (codex: ChatGPT login; gemini: `gemini` once -> Google
@@ -153,7 +181,7 @@ CLI_SEATS = {
 
 HOST = _cfg("OLLAMA_HOST", "http://localhost:11434")
 MODEL = _cfg("CRITIC_MODEL", "qwen3:8b")
-LOG_PATH = _cfg("CRITIC_LOG", os.path.join(_HERE, "critique.log"))
+LOG_PATH = _cfg("CRITIC_LOG", _state_path("critique.log"))
 
 # Ollama native: seed honored under "options" → a pinned tag gives a reproducible critique.
 OPTIONS = {"temperature": 0.4, "seed": 0}
@@ -317,7 +345,7 @@ def log_run(artifact, mode, depth, brief, intent, model=None, endpoint=None, bas
 # critiques; it NEVER grants authority over whether the Intent is right (that
 # residual stays the owner's).
 
-REGISTRY_PATH = _cfg("CRITIC_REGISTRY", os.path.join(_HERE, "critic_registry.tsv"))
+REGISTRY_PATH = _cfg("CRITIC_REGISTRY", _state_path("critic_registry.tsv"))
 REPROBE_DAYS = 30  # model tags mutate; a PASS older than this is stale -> re-probe
 
 # A tiny PROSE artifact with THREE independent, blatant flaws — matched to the real use
@@ -668,10 +696,13 @@ def _suggest_panel(rows, top=3):
     diversity), by score then no-marginal-cost-first (free/sub before paid), capped at
     `top`. A 'blocked' seat (latest record UNAVAILABLE — quota exhausted or unreachable)
     is DISCARDED: a seat with no tokens is not a seat (re-probe restores it).
+    The probe SATURATES (3/3 is common), so score ties are broken by cost tier
+    then parsed model version — without the version key, probe ORDER decided
+    the pick and a gemini-2.5 outranked a 3.1 (observed 2026-07-02).
     rows are [lineage, model, endpoint, cost, score]."""
     rows = [r for r in rows if r[4] not in ("blocked", "retired", "failed")]
     def key(r):
-        return (_int(r[4]), r[3] != "paid")
+        return (_int(r[4]), r[3] != "paid", _version(r[1]))
     best = {}
     for r in rows:
         if r[0] not in best or key(r) > key(best[r[0]]):
@@ -779,7 +810,7 @@ def do_discover():
 # (next to the registry) — no merge. --panel reads it; --configure writes it; the
 # registry only supplies live scores. The project file is created ONLY by an explicit
 # `--configure --project`; NOTHING writes it at startup.
-PANEL_GLOBAL = _cfg("CRITIC_PANEL", os.path.join(_HERE, "critic_panel.json"))
+PANEL_GLOBAL = _cfg("CRITIC_PANEL", _state_path("critic_panel.json"))
 PANEL_PROJECT = os.path.join(".critic", "critic_panel.json")
 REFRESH_DAYS = 7   # a panel older than this is flagged "re-check for new models" (date-compare only)
 

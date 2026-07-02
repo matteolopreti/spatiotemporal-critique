@@ -1,0 +1,37 @@
+### PRESERVE
+- Clean, type-annotated `Protocol`-based architecture separating transport mechanisms from synchronization logic.
+- Deterministic sorting of uploads and deletes in `diff_remote_manifest` ensuring predictable execution order.
+- Use of high-precision `mtime_ns` and content-based `sha256` in `FileRecord` for robust change detection.
+
+### ISSUES
+- **[severity high] Broken paging logic in `_page_bounds`** — When the total number of items is a multiple of `page_size`, the last item of the collection is omitted (e.g., `_page_bounds(100, 100)` returns `[(0, 99)]`, dropping index 99 entirely). 
+  *Fix*: Remove the flawed `end -= 1` adjustment and use standard slicing bounds:
+  ```python
+  def _page_bounds(self, total: int, page_size: int) -> list[tuple[int, int]]:
+      return [(i, min(i + page_size, total)) for i in range(0, total, page_size)]
+  ```
+
+- **[severity high] Resource leak on empty files in `_sha256_file`** — If a file is empty, the method returns `EMPTY_SHA256` early without closing the opened file handle `handle`. 
+  *Fix*: Wrap the file operations in a `with` statement, which guarantees closure and simplifies the logic:
+  ```python
+  def _sha256_file(self, path: Path) -> str:
+      digest = hashlib.sha256()
+      with path.open("rb") as handle:
+          for block in iter(lambda: handle.read(1024 * 1024), b""):
+              digest.update(block)
+      return digest.hexdigest()
+  ```
+
+- **[severity med] Flawed ignore logic in `_is_ignored`** — Checking only `path.name` allows files inside ignored directories (e.g., `.git/config` or `temp.tmp/data.txt`) to be scanned and synced because the parent directory names are ignored.
+  *Fix*: Check all parts of the path relative to the root:
+  ```python
+  def _is_ignored(self, path: Path) -> bool:
+      parts = path.relative_to(self.root).parts
+      for part in parts:
+          if part.startswith(".") or part.endswith(".tmp") or part == "sync.lock":
+              return True
+      return False
+  ```
+
+### VERDICT
+Not genuinely good as-is; it contains a critical paging bug that drops files during batching, a file descriptor leak on empty files, and a directory-traversal bypass in the ignore logic.

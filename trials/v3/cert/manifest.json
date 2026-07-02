@@ -1,0 +1,317 @@
+{
+ "battery": "v3cert",
+ "note": "SEALED certification set (docs/08-fp-program-plan.md E1/E6). Never reviewed during iteration; the runner refuses to run it without --unseal; opened ONCE at E6, no re-draws. 10 clean decoys (4 code / 3 doc / 3 spec) + 4 planted artifacts (9 flaws). All Claude-authored so every seat reviews every artifact (full panel coverage).",
+ "artifacts": [
+  {
+   "file": "v3c01_code.py",
+   "kind": "code",
+   "author": "claude",
+   "decoy": true,
+   "flaws": []
+  },
+  {
+   "file": "v3c02_code.py",
+   "kind": "code",
+   "author": "claude",
+   "decoy": true,
+   "flaws": []
+  },
+  {
+   "file": "v3c03_code.py",
+   "kind": "code",
+   "author": "claude",
+   "decoy": true,
+   "flaws": []
+  },
+  {
+   "file": "v3c04_code.py",
+   "kind": "code",
+   "author": "claude",
+   "decoy": true,
+   "flaws": []
+  },
+  {
+   "file": "v3c05_doc.md",
+   "kind": "doc",
+   "author": "claude",
+   "decoy": true,
+   "flaws": []
+  },
+  {
+   "file": "v3c06_doc.md",
+   "kind": "doc",
+   "author": "claude",
+   "decoy": true,
+   "flaws": []
+  },
+  {
+   "file": "v3c07_doc.md",
+   "kind": "doc",
+   "author": "claude",
+   "decoy": true,
+   "flaws": []
+  },
+  {
+   "file": "v3c08_spec.md",
+   "kind": "spec",
+   "author": "claude",
+   "decoy": true,
+   "flaws": []
+  },
+  {
+   "file": "v3c09_spec.md",
+   "kind": "spec",
+   "author": "claude",
+   "decoy": true,
+   "flaws": []
+  },
+  {
+   "file": "v3c10_spec.md",
+   "kind": "spec",
+   "author": "claude",
+   "decoy": true,
+   "flaws": []
+  },
+  {
+   "file": "v3p1_code.py",
+   "kind": "code",
+   "author": "claude",
+   "decoy": false,
+   "flaws": [
+    {
+     "label": "equal-priority tie-break compares enqueued_at the wrong way, so submission order becomes newest-first (FIFO becomes LIFO)",
+     "anchors": [
+      "__lt__",
+      "enqueued_at",
+      "priority",
+      "submission order"
+     ],
+     "crit": [
+      "lifo",
+      "fifo",
+      "inverted",
+      "reversed",
+      "backwards",
+      "newest",
+      "most recent",
+      "last submitted",
+      "wrong order",
+      "out of order",
+      "stack",
+      "later job"
+     ]
+    },
+    {
+     "label": "failed job is resubmitted as a fresh Job (attempts=0), so the attempt counter never accumulates and a raising job retries without end, never marked failed",
+     "anchors": [
+      "max_attempts",
+      "attempts",
+      "except exception",
+      "submit"
+     ],
+     "crit": [
+      "forever",
+      "infinite",
+      "never marked",
+      "never fails",
+      "reset",
+      "fresh",
+      "new job",
+      "indefinitely",
+      "endless",
+      "loses",
+      "retry loop",
+      "zero"
+     ]
+    },
+    {
+     "label": "_next_job returns None once _stop is set even with a non-empty heap, so shutdown() abandons queued-but-unstarted jobs despite the graceful-drain promise",
+     "anchors": [
+      "shutdown",
+      "drain",
+      "_stop",
+      "runs to completion"
+     ],
+     "crit": [
+      "drops",
+      "dropped",
+      "abandon",
+      "discard",
+      "lost",
+      "unprocessed",
+      "never run",
+      "left behind",
+      "still in the heap",
+      "exits early",
+      "not executed",
+      "silently"
+     ]
+    }
+   ]
+  },
+  {
+   "file": "v3p2_code.py",
+   "kind": "code",
+   "author": "claude",
+   "decoy": false,
+   "flaws": [
+    {
+     "label": "expiry adds a seconds TTL to a millisecond clock (_now_ms() + ttl), so holds expire ~1000x too soon (900 s hold lives 0.9 s)",
+     "anchors": [
+      "_now_ms",
+      "expires_at",
+      "ttl",
+      "900"
+     ],
+     "crit": [
+      "millisecond",
+      "1000x",
+      "1,000x",
+      "unit",
+      "mismatch",
+      "too fast",
+      "too early",
+      "premature",
+      "instantly",
+      "0.9",
+      "mixes",
+      "sub-second"
+     ]
+    },
+    {
+     "label": "release() lacks the active-state guard that commit/expire_stale have; double release (or release after commit/expiry) decrements reserved below zero and inflates available stock",
+     "anchors": [
+      "def release",
+      "_reserved",
+      "hold.qty",
+      "active"
+     ],
+     "crit": [
+      "double",
+      "twice",
+      "negative",
+      "idempoten",
+      "already released",
+      "corrupt",
+      "oversell",
+      "second release",
+      "no guard",
+      "state check",
+      "again",
+      "unchecked"
+     ]
+    }
+   ]
+  },
+  {
+   "file": "v3p3_doc.md",
+   "kind": "doc",
+   "author": "claude",
+   "decoy": false,
+   "flaws": [
+    {
+     "label": "10%/month growth claimed to double every ~4 months (true doubling ~7.3 months; the doc's own projection table shows only 3.1x at 12 months, not two doublings)",
+     "anchors": [
+      "10% month-over-month",
+      "doubles",
+      "four months",
+      "13,180"
+     ],
+     "crit": [
+      "seven months",
+      "7.3",
+      "rule of 72",
+      "compound",
+      "1.1^",
+      "does not double",
+      "miscalculat",
+      "overstat",
+      "should be",
+      "actually",
+      "inconsisten",
+      "contradict"
+     ]
+    },
+    {
+     "label": "headroom conclusion claims every tier retains at least 40% headroom, but the utilization table shows the database primary at 78% (22% headroom)",
+     "anchors": [
+      "78%",
+      "headroom",
+      "peak utilization",
+      "database primary"
+     ],
+     "crit": [
+      "22%",
+      "only 22",
+      "not 40",
+      "less than 40",
+      "contradict",
+      "does not match",
+      "doesn't match",
+      "inconsisten",
+      "saturat",
+      "exceed",
+      "violat",
+      "over 60"
+     ]
+    }
+   ]
+  },
+  {
+   "file": "v3p4_spec.md",
+   "kind": "spec",
+   "author": "claude",
+   "decoy": false,
+   "flaws": [
+    {
+     "label": "refresh_token_ttl (3600) is far below access_token_ttl (86400) while prose claims the refresh token always outlives the access token and calls access short-lived / refresh long-lived",
+     "anchors": [
+      "access_token_ttl",
+      "refresh_token_ttl",
+      "86400",
+      "3600",
+      "outlives"
+     ],
+     "crit": [
+      "shorter",
+      "inverted",
+      "swapped",
+      "reversed",
+      "backwards",
+      "expires first",
+      "expires before",
+      "one hour",
+      "24 hours",
+      "contradict",
+      "flipped",
+      "longer than"
+     ]
+    },
+    {
+     "label": "revocation section requires the gateway to consult the deny-list on every validation, but the caching section defines the deny-list as write-only \u2014 nothing on the request path ever reads it",
+     "anchors": [
+      "deny-list",
+      "write-only",
+      "ever reads",
+      "consult",
+      "jti"
+     ],
+     "crit": [
+      "contradict",
+      "conflict",
+      "impossible",
+      "never checked",
+      "unenforce",
+      "ineffective",
+      "inconsisten",
+      "mutually",
+      "won't",
+      "cannot",
+      "no effect",
+      "dead"
+     ]
+    }
+   ]
+  }
+ ]
+}

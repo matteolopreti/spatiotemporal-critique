@@ -1,0 +1,12 @@
+1. PRESERVE
+* **Precise performance benchmarks:** Stating "under 300 ms at the 95th percentile on workspaces up to 100,000 documents" provides concrete, verifiable technical credibility instead of vague "faster search" claims.
+* **Granular workflow mechanics:** The explanation of partial approvals (retaining approvals for untouched sections in returned drafts) clearly communicates how the feature handles edge cases.
+* **Explicit API and compatibility details:** Listing the exact new endpoints (`/activity` and `/reviews`) and confirming the lack of deprecations or migration steps prevents developer friction.
+
+2. ISSUES
+* [severity low] The search operator example `from:name` is ambiguous — clarify whether "name" refers to a username, display name, or email address (e.g., `from:username` or `from:email@domain.com`).
+* [severity low] The phrase "improved by roughly a third" is imprecise compared to the other metrics in the document — replace with a specific percentage (e.g., "improved by 33%").
+* [severity med] The seat reassignment description leaves it unclear if ownership transfer is mandatory, automatic, or selective — clarify if this is a bulk transfer of *all* documents owned by the departing user during deprovisioning.
+
+3. VERDICT
+Genuinely good as-is; it is exceptionally clean, metrics-driven, free of marketing fluff, and directly addresses the practical concerns of both users and administrators.

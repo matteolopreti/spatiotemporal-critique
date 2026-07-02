@@ -1,0 +1,11 @@
+1. PRESERVE — durable queue decoupling; explicit at-least-once semantics; stable subscriber-facing duplicate contract; bounded retries with DLQ; stateless workers behind a consumer group; 256 KB payload cap with object-storage references.
+
+2. ISSUES
+[severity high] `X-Relay-Id` is ambiguous — define it as a stable event/delivery id reused across all retry attempts, and add a separate attempt number/header if needed.
+[severity high] Untrusted subscriber URLs create SSRF risk — require HTTPS, block private/link-local/internal IP ranges after DNS resolution, prevent DNS rebinding, and disallow or tightly validate redirects.
+[severity high] Retry scheduling is underspecified — do not keep failed messages sitting in a hot consumer loop; persist attempt state and next-attempt time durably, then ack/requeue through a delayed queue or scheduler.
+[severity med] Exponential backoff lacks jitter and tenant isolation — add jitter, per-subscriber rate limits, timeouts, and circuit breaking so one bad endpoint cannot consume worker capacity.
+[severity med] Signature design is missing replay protection — sign the raw body plus timestamp, delivery id, and target URL; document clock skew tolerance, secret rotation, and verification rules.
+[severity low] DLQ replay is operationally vague — require audited replay, scoped permissions, payload redaction rules, and replay idempotency safeguards.
+
+VERDICT — not genuinely good as-is: the core shape is sound, but correctness depends on retry durability, idempotency semantics, SSRF controls, and signature/replay details that are currently missing.

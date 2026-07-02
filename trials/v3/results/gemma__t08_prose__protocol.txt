@@ -1,0 +1,8 @@
+1. PRESERVE — The specific performance metric (30% reduction on 50,000+ entries) and the CSV preview limit (first ten rows). These provide necessary technical credibility.
+
+2. ISSUES — 
+[High] Tense/Date inconsistency: "was released" is used for a March 12, 2025 date. Fix: If this is being published before that date, change to "will be released."
+[Med] Ambiguous PDF description: "fits twelve months on one page" is imprecise. Fix: Change to "displays 12 months of data on a single page."
+[Low] Vague mobile parity: "the same importer improvements" relies on the reader's memory of the previous paragraph. Fix: Explicitly state "the CSV auto-detection and preview features."
+
+VERDICT — This is a solid, professional release note that succeeds in being concise, but it suffers from a potential temporal error and slightly vague phrasing in the PDF description.

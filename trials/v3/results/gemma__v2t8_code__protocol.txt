@@ -1,0 +1,10 @@
+1. PRESERVE — 
+- Thread safety via `threading.Lock`.
+- Window calculation logic: `int(now // self.window_seconds) * self.window_seconds` correctly identifies fixed boundaries.
+- The `allow` and `remaining` methods' logic for resetting the count when a window boundary is crossed.
+
+2. ISSUES — 
+- [High] Memory Leak: The `_counters` dictionary grows indefinitely as new unique keys are encountered, with no mechanism to prune old windows or expired keys. Fix: Use a TTL-based cache (like `cachetools.TTLCache`) or a manual cleanup routine to remove keys that haven't been accessed within the current window.
+- [Med] Lock Contention: A single global lock for all keys will cause significant bottlenecks in high-concurrency environments with many unique keys. Fix: Implement "lock striping" by creating a fixed array of locks and assigning keys to them using `hash(key) % len(locks)`.
+
+VERDICT — This is a functionally correct implementation for low-traffic internal tools, but it will crash or cause OOM (Out of Memory) errors in production environments due to the unbounded growth of the `_counters` dictionary.

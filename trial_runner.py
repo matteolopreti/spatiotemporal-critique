@@ -49,7 +49,8 @@ ALL_SEATS = {
     "codex": ("codex-default", "codex-cli", ""),
     "gemini": ("gemini-3.5-flash", GOOGLE_BASE, "google"),
 }
-BATTERY_SEATS = {"v1": ("gemma", "codex"), "v2": ("gemma", "codex", "gemini")}
+BATTERY_SEATS = {"v1": ("gemma", "codex"), "v2": ("gemma", "codex", "gemini"),
+                 "v3": ("gemma", "codex", "gemini"), "v3cert": ("gemma", "codex", "gemini")}
 
 LONE = ("You are a strict, uncompromising reviewer. Your job is to find the problems "
         "in the work. List every problem you can find, each as: [severity high/med/low] "
@@ -89,7 +90,22 @@ def harness_contract():
             "decision belongs to the human owner — never render a green light.")
 
 
+# Battery v3 (docs/08 plan, E2): the deterministic quote gate's prompt half. The gate
+# itself runs at SCORING time on the raw response — pre-gate output is always preserved.
+QUOTE_ADDENDUM = (
+    "\n\nADDITIONAL OUTPUT CONTRACT — evidence grounding: every ISSUES item MUST include, "
+    "on its own lines directly under the item:\n"
+    'QUOTE: "<verbatim excerpt copied exactly from the work>"\n'
+    "WHY: <one sentence on why this quote entails the problem>\n"
+    "Use more than one QUOTE line when a single excerpt is not enough. A finding whose "
+    "QUOTE does not appear verbatim in the work is discarded unread — never paraphrase "
+    "inside QUOTE."
+)
+
+
 def conditions_for(battery):
+    if battery in ("v3", "v3cert"):
+        return {"protocol": ec.SYSTEM, "protocolq": ec.SYSTEM + QUOTE_ADDENDUM}
     conds = {"lone": LONE, "protocol": ec.SYSTEM, "quick": QUICK, "standard": STANDARD}
     if battery == "v2":
         conds["harness"] = harness_contract()
@@ -110,6 +126,56 @@ def findings_count(text):
     if m:
         return len(re.findall(r"^\s*(?:[-*•]|\d+[.)])\s+\S", m.group(1), re.M))
     return 0
+
+
+# Floor against trivially-matching micro-quotes ("def ", "the") that would let a
+# fabricated finding pass the gate on a 4-char excerpt. Over-strictness is measured,
+# not assumed: the per-seat quote-emission-failure metric (docs/08 E2) catches it.
+QUOTE_MIN_CHARS = 10
+
+
+def _norm(s):
+    """Whitespace-collapsed, quote-normalized, lowercased — the gate's match space."""
+    for a, b in (("“", '"'), ("”", '"'), ("«", '"'), ("»", '"'), ("„", '"'),
+                 ("‘", "'"), ("’", "'"), ("‚", "'"), ("`", "")):
+        s = (s or "").replace(a, b)
+    return re.sub(r"\s+", " ", s).lower().strip()
+
+
+def split_findings(text):
+    """Split a response into per-finding chunks (QUOTE:/WHY: lines stay with their item)."""
+    t = ec._strip_reasoning(text or "")
+    chunks = re.split(r"(?=\[\s*severity)", t, flags=re.I)
+    if len(chunks) > 1:
+        return chunks[1:]
+    m = re.search(r"(?:ISSUES|GENERIC)\b(.*?)(?:\bVERDICT\b|\bREASONING\b|$)", t, re.S | re.I)
+    if not m:
+        return []
+    parts = re.split(r"(?m)^(?=\s*(?:[-*•]|\d+[.)])\s+\S)", m.group(1))
+    return [p for p in parts if re.match(r"\s*(?:[-*•]|\d+[.)])\s+\S", p)]
+
+
+def quote_gate(text, artifact_text):
+    """Deterministic quote-existence gate (docs/08 E2): keep a finding iff at least one
+    of its QUOTE lines exists verbatim (normalized) in the artifact. Returns
+    (kept_chunks, dropped_count). Raw responses are never modified — re-scorable."""
+    art = _norm(artifact_text)
+    kept, dropped = [], 0
+
+    def payload(q):
+        # normalize FIRST (turns «»/“” wrappers into straight quotes), then strip the
+        # wrappers — a quote emitted as QUOTE: «x» must match an unquoted x in the work
+        return _norm(q).strip('"').strip("'").strip()
+
+    for ch in split_findings(text):
+        # \b not ^: seats emit "— QUOTE: …" inline as often as on its own line; a stray
+        # capture is harmless (it just won't match the artifact)
+        qs = re.findall(r"(?im)\bquote:\s*(.+?)\s*$", ch)
+        if any(len(payload(q)) >= QUOTE_MIN_CHARS and payload(q) in art for q in qs):
+            kept.append(ch)
+        else:
+            dropped += 1
+    return kept, dropped
 
 
 def flaws_named(text, flaws):
@@ -133,8 +199,9 @@ def run_seat(seat, arts, conds, trials_dir, results_dir):
         if art["author"] == seat:
             continue                    # never scored on your own answer key
         text = open(os.path.join(trials_dir, art["file"]), encoding="utf-8").read()
+        stem = os.path.splitext(os.path.basename(art["file"]))[0]
         for cond, system in conds.items():
-            path = os.path.join(results_dir, f"{seat}__{os.path.splitext(art['file'])[0]}__{cond}.txt")
+            path = os.path.join(results_dir, f"{seat}__{stem}__{cond}.txt")
             if os.path.exists(path):
                 continue
             prompt = ec.build_prompt(text, BRIEF, "", "correctness")
@@ -147,28 +214,44 @@ def run_seat(seat, arts, conds, trials_dir, results_dir):
             print(f"  done {seat:6} {art['file']:16} {cond}", flush=True)
 
 
-def score(arts, seats, conds, results_dir):
+def score(arts, seats, conds, results_dir, trials_dir):
     rows = {}
     union = {}   # (cond, artifact) -> set(labels)  [panel = union of `protocol`]
     for seat in seats:
         for art in arts:
             if art["author"] == seat:
                 continue
+            stem = os.path.splitext(os.path.basename(art["file"]))[0]
             for cond in conds:
-                path = os.path.join(results_dir, f"{seat}__{os.path.splitext(art['file'])[0]}__{cond}.txt")
+                path = os.path.join(results_dir, f"{seat}__{stem}__{cond}.txt")
                 if not os.path.exists(path):
                     continue
                 out = open(path, encoding="utf-8").read()
                 if out.startswith("(seat unavailable"):
                     continue
                 r = rows.setdefault((cond, seat), {"named": 0, "flaws": 0, "findings": 0,
-                                                   "decoy_findings": 0, "decoys": 0})
-                n = findings_count(out)
+                                                   "decoy_findings": 0, "decoys": 0,
+                                                   "gate_dropped": 0, "gate_recall_lost": 0})
+                gated = cond.endswith("q")
+                if gated:
+                    artifact = open(os.path.join(trials_dir, art["file"]), encoding="utf-8").read()
+                    kept, dropped = quote_gate(out, artifact)
+                    graded, n = "\n".join(kept), len(kept)
+                    r["gate_dropped"] += dropped
+                    miss = findings_count(out) - (len(kept) + dropped)
+                    if miss > 0:   # findings the counter sees but the chunker missed —
+                        print(f"(parse mismatch: {os.path.basename(path)} — {miss} findings "
+                              f"invisible to the gate; inspect before trusting this row)",
+                              file=sys.stderr)
+                else:
+                    graded, n = out, findings_count(out)
                 if art["decoy"]:
                     r["decoy_findings"] += n
                     r["decoys"] += 1
                 else:
-                    named = flaws_named(out, art["flaws"])
+                    named = flaws_named(graded, art["flaws"])
+                    if gated:   # a true flaw named pre-gate but dropped by it = the gate's own recall cost
+                        r["gate_recall_lost"] += len(set(flaws_named(out, art["flaws"])) - set(named))
                     r["named"] += len(named)
                     r["flaws"] += len(art["flaws"])
                     r["findings"] += n
@@ -177,9 +260,14 @@ def score(arts, seats, conds, results_dir):
 
 
 def main():
-    battery = "v2" if "v2" in sys.argv else "v1"
+    battery = next((b for b in ("v3cert", "v3", "v2") if b in sys.argv), "v1")
     report_only = "--report" in sys.argv
-    trials_dir = os.path.join(HERE, "trials") if battery == "v1" else os.path.join(HERE, "trials", "v2")
+    dirs = {"v1": ("trials",), "v2": ("trials", "v2"),
+            "v3": ("trials", "v3"), "v3cert": ("trials", "v3", "cert")}
+    trials_dir = os.path.join(HERE, *dirs[battery])
+    if battery == "v3cert" and not report_only and "--unseal" not in sys.argv:
+        sys.exit("SEALED: the certification set runs once, at E6 (docs/08 plan). "
+                 "Pass --unseal only for that one pre-registered run.")
     results_dir = os.path.join(trials_dir, "results")
     os.makedirs(results_dir, exist_ok=True)
     arts = json.load(open(os.path.join(trials_dir, "manifest.json")))["artifacts"]
@@ -192,18 +280,20 @@ def main():
             t.start()
         for t in threads:
             t.join()
-    rows, union = score(arts, seats, conds, results_dir)
+    rows, union = score(arts, seats, conds, results_dir, trials_dir)
 
     total_flaws = sum(len(a["flaws"]) for a in arts)
     print(f"\nTRIAL SCOREBOARD — battery {battery}: {len(arts)} artifacts, {total_flaws} planted "
           f"flaws, {sum(1 for a in arts if a['decoy'])} clean decoys")
-    print(f"{'condition':10} {'seat':7} {'recall':>12} {'findings':>10} {'invented/decoy':>15}")
+    print(f"{'condition':10} {'seat':7} {'recall':>12} {'findings':>10} {'invented/decoy':>15} "
+          f"{'gate(drop/rloss)':>17}")
     for (cond, seat), r in sorted(rows.items()):
         rec = f"{r['named']}/{r['flaws']}"
         inv = f"{r['decoy_findings']}/{r['decoys']}" if r["decoys"] else "—"
-        print(f"{cond:10} {seat:7} {rec:>12} {r['findings']:>10} {inv:>15}")
+        gate = (f"{r['gate_dropped']}/{r['gate_recall_lost']}" if cond.endswith("q") else "—")
+        print(f"{cond:10} {seat:7} {rec:>12} {r['findings']:>10} {inv:>15} {gate:>17}")
 
-    for cond in ("protocol", "harness"):
+    for cond in ("protocol", "protocolq", "harness"):
         if not any(c == cond for (c, _f) in union):
             continue
         named = sum(len(v) for (c, f), v in union.items()

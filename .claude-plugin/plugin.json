@@ -1,6 +1,6 @@
 {
   "name": "spatiotemporal-critique",
-  "version": "4.12.0",
+  "version": "4.14.0",
   "description": "Balanced AI code & writing review: a preserve-first, intent-anchored review protocol plus a multi-model external critic panel — a genuinely independent second opinion from different model families (local Ollama, OpenAI Codex CLI, or cloud APIs), each seat certified by a deterministic capability probe, every paid call spend-gated. Zero-config panel setup with --init.",
   "author": {
     "name": "Matteo Lopreti",

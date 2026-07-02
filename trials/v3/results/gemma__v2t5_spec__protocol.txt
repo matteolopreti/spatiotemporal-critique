@@ -1,0 +1,16 @@
+1. PRESERVE
+*   **Strangler Pattern Approach:** The use of a facade within the monolith to route traffic incrementally is the correct architectural choice for this complexity level.
+*   **Success Criteria:** Defining success via "no material variance in invoice totals" and "audit trail for every mutation" provides clear, non-negotiable guardrails for Finance.
+*   **Shadow Mode Strategy:** Running Phase B and C in shadow mode (comparing outputs without taking over the source of truth) is essential for high-integrity financial systems.
+*   **Rollback Granularity:** The requirement for per-capability, per-cohort, and per-tenant routing allows for "blast radius" containment during deployment.
+*   **Auditability in Migration:** Preserving source identifiers (Source System, Source Table, Primary Key) in the new schema is critical for regulatory compliance.
+
+2. ISSUES
+*   [High] **Dependency Paradox in Phase B:** The plan states Phase B cannot start until Phase D's schema is accepted. This creates a circular dependency or a "chicken-and-egg" problem where you cannot calculate an invoice without a ledger, but the ledger depends on the invoice data. — *Fix: Clarify if this is a hard requirement from Finance (e.g., for specific accounting types) and ensure the development roadmap allows for parallel schema definition.*
+*   [High] **Snapshot Migration Data Loss:** The plan relies on "consistent snapshots" for migration but does not account for mutations occurring between the snapshot time and the final cutover. — *Fix: Require a Change Data Capture (CDC) mechanism or a "Freeze" period where the specific cohort's records are locked from mutation during the sync window.*
+*   [High] **Distributed Transaction Integrity:** The plan ignores how to maintain atomicity when a single business action (e.g., "Renew Subscription") must now span four separate services (Subscription, Invoice, Payment, Ledger). — *Fix: Explicitly define the use of the Saga Pattern or Transactional Outbox Pattern to ensure consistency across service boundaries.*
+*   [Med] **Side-Effect Management in Shadow Mode:** There is no mention of suppressing side effects (e.g., sending emails, triggering external webhooks) during Phase C's shadow execution. — *Fix: Explicitly state that "Shadow" mode must suppress all external communications and third-party API calls while still logging the intended action.*
+*   [Med] **Idempotency in Payment Retries:** While the migration script is idempotent, the plan doesn't specify how payment retries are handled when a request spans the Monolith/Service boundary. — *Fix: Require a unique `request_id` or `idempotency_key` generated at the Facade level to ensure no double-charging occurs during transitionary "flip-flop" states.*
+
+VERDICT
+This is a high-quality, professional migration plan that correctly prioritizes data integrity over velocity. However, it currently lacks the technical depth required to handle **concurrency** and **distributed state**—the two primary reasons billing migrations fail. It treats the migration as a "data move," but for this complexity, it must be treated as a "state machine transition."

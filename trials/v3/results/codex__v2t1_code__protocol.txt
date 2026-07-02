@@ -1,0 +1,14 @@
+1. PRESERVE — Clear sync shape: fetch remote, parse, merge local edits, push merged profiles. The merge policy is explicit, and copying remote profile dicts before mutation avoids modifying parsed remote objects during merge.
+
+2. ISSUES —
+[severity high] Cache expiry is broken: `stored_at - time.time() < CACHE_TTL_SECONDS` is almost always true, so entries effectively never expire — change it to `time.time() - stored_at < CACHE_TTL_SECONDS`.
+
+[severity high] Grace-window comparison mishandles timezone-aware UTC timestamps by stripping `tzinfo` and comparing to local naive time — parse as aware and compare to `datetime.now(timezone.utc)`.
+
+[severity high] `sync()` may push stale remote profiles from cache back to the server, overwriting newer remote changes — do not use a whole-directory cache before a write sync, or require version/ETag conflict checks before `push_profiles`.
+
+[severity med] `parse_remote_profiles()` can crash on valid JSON with the wrong shape, such as a list body or non-dict profile entries — validate `body` is a dict, `profiles` is a list, and each profile is a dict before calling `.get()`.
+
+[severity med] Local edit profiles can overwrite immutable identity fields during `merged[user_id].update(edit["profile"])` — reject or ignore `id` in local edit payloads unless it equals `user_id`.
+
+VERDICT — Not good as-is; the cache expiry bug and timezone handling directly violate the documented conflict behavior.

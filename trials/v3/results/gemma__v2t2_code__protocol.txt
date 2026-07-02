@@ -1,0 +1,17 @@
+1. PRESERVE
+- The use of `Path.rglob("*")` combined with `path.is_file()` to filter the filesystem.
+- The streaming implementation in `_sha256_file` (reading in 1MB blocks) to prevent memory exhaustion on large files.
+- The `ChangeSet` abstraction which separates the diffing logic from the execution logic.
+- The use of `as_posix()` in `_relative` to ensure cross-platform path consistency.
+
+2. ISSUES
+- [severity high] The `_page_bounds` method contains a logic error that causes it to skip the last item in any collection where the total count is a multiple of the page size.
+  *Fix:* Remove the `if end == total and total % page_size == 0:` block entirely. The `min(start + page_size, total)` already correctly handles the final boundary.
+- [severity high] `_sha256_file` fails to close the file handle if an exception occurs during reading or hashing (e.g., PermissionError or DiskError).
+  *Fix:* Wrap the logic in a `with path.open("rb") as handle:` context manager.
+- [severity med] The `sync` method performs `upload_changes` and `delete_remote` sequentially without any error handling or state persistence. If an upload fails halfway, the local state remains "unsynced" but some remote changes may have been applied.
+  *Fix:* Wrap the execution in a try/except block; while full atomicity is difficult, ensuring the `ChangeSet` is logged or returned even on partial failure allows for better recovery.
+- [severity low] `_record_changed` performs redundant type casting (`int(...)`, `str(...)`) on every comparison.
+  *Fix:* Ensure the `Transport` implementation returns consistent types (integers and strings) so these casts can be removed, improving performance during large diffs.
+
+VERDICT — Not good as-is due to the `_page_bounds` bug which prevents the final file of a batch from ever being uploaded/deleted if the count is perfectly divisible by the batch size.

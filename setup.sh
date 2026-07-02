@@ -197,7 +197,7 @@ else
 fi
 
 say "ready · external reviewer configured with: $CHOSEN"
-echo "every real run is appended to critique.log next to the helper (pin+log;"
+echo "every real run is appended to critique.log in ~/.config/spatiotemporal-critique (pin+log;"
 echo "model, seed and params recorded — auditable, reproducible on the same build)."
 echo "test it on real work:"
 echo "  python3 external_critic.py YOUR_FILE --brief 'focus here' --mode correctness"
