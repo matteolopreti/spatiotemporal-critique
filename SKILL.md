@@ -56,8 +56,8 @@ Critics run by one model in one context only *approximate* independence (same we
 
 ```bash
 ./setup.sh                       # one-time: picks a local model that safely fits your RAM
-                                 # (cloud: set CRITIC_BASE_URL + CRITIC_MODEL; load the key from a
-                                 #  secret store, not an inline export — see EXTERNAL_CRITIC.md)
+                                 # (cloud: store a key once as critic-api-key-<provider> in your OS
+                                 #  secret store — the helper finds it itself; see EXTERNAL_CRITIC.md)
 python3 external_critic.py --probe          # availability != capability: does this seat actually critique?
 python3 external_critic.py path/to/work --brief "focus here" --mode correctness   # --mode taste; --depth full for rationale
 python3 external_critic.py --configure      # pick 1-3 capable seats across lineages and REMEMBER them

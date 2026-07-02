@@ -86,11 +86,13 @@ def ram_gb():
 # Local Ollama candidates, best-first, with approx LOADED GiB. Perishable — verify the
 # current strong tags on ollama.com/library; refresh this list by hand. Pick a lineage
 # DIFFERENT from your primary model for real independence.
+# (deepseek-r1 / gpt-oss retired 2026-07: reachable but null on real artifacts —
+#  they summarized instead of critiquing; gemma4:12b probed 2/2 on the planted flaws.)
 LOCAL_MODELS = [
     ("qwen3:4b", 3, "light floor"),
     ("qwen3:8b", 5, "good general floor"),
-    ("deepseek-r1:14b", 9, "reasoning, different lineage"),
-    ("gpt-oss:20b", 14, "strong; wants ~24GB+"),
+    ("gemma4:12b", 8, "probed 2/2 — strong reviewer, Gemini lineage"),
+    ("qwen3:14b", 9, "strong general"),
     ("qwen3:32b", 20, "stronger; wants ~32GB+"),
 ]
 
@@ -111,6 +113,14 @@ def recommend_local(ram):
 # Cloud providers live in the shared critic_providers module (one source of truth,
 # imported by external_critic.py too, so the map can't drift between the two scripts).
 from critic_providers import PROVIDERS  # noqa: E402
+
+
+def _shell_base(url, shell):
+    """A provider base for the critic-env snippet: Cloudflare's {account} becomes a
+    shell-expanded CLOUDFLARE_ACCOUNT_ID reference (set it in your rc; not a secret)."""
+    ref = {"powershell": "$env:CLOUDFLARE_ACCOUNT_ID",
+           "fish": "$CLOUDFLARE_ACCOUNT_ID"}.get(shell, "${CLOUDFLARE_ACCOUNT_ID}")
+    return url.replace("{account}", ref)
 
 
 def key_storage_cmd(osn, provider):
@@ -135,7 +145,8 @@ def env_snippet(shell, osn):
     behind a single function. CRITIC_MODEL is left empty so `--discover` can choose."""
     names = " | ".join(PROVIDERS)
     if shell in ("zsh", "bash"):
-        cases = "\n".join(f'    {p}) export CRITIC_BASE_URL="{u}" ;;' for p, (lg, u) in PROVIDERS.items())
+        cases = "\n".join(f'    {p}) export CRITIC_BASE_URL="{_shell_base(u, shell)}" ;;'
+                          for p, (lg, u) in PROVIDERS.items())
         load = {"Darwin": 'export CRITIC_API_KEY="$(security find-generic-password -s critic-api-key-$1 -w 2>/dev/null)"',
                 "Linux":  'export CRITIC_API_KEY="$(secret-tool lookup service critic-api-key-$1)"',
                 }.get(osn, 'export CRITIC_API_KEY="$CRITIC_API_KEY"   # load critic-api-key-$1 from your secret store')
@@ -149,7 +160,8 @@ def env_snippet(shell, osn):
                 '  [ -n "$CRITIC_API_KEY" ] && echo "critic-env: $1 ready" || echo "WARN: no key stored for $1" >&2\n'
                 "}")
     if shell == "fish":
-        cases = "\n".join(f'    case {p}; set -gx CRITIC_BASE_URL "{u}"' for p, (lg, u) in PROVIDERS.items())
+        cases = "\n".join(f'    case {p}; set -gx CRITIC_BASE_URL "{_shell_base(u, shell)}"'
+                          for p, (lg, u) in PROVIDERS.items())
         load = {"Darwin": "set -gx CRITIC_API_KEY (security find-generic-password -s critic-api-key-$argv[1] -w 2>/dev/null)",
                 "Linux":  "set -gx CRITIC_API_KEY (secret-tool lookup service critic-api-key-$argv[1])",
                 }.get(osn, "set -gx CRITIC_API_KEY $CRITIC_API_KEY")
@@ -162,7 +174,8 @@ def env_snippet(shell, osn):
                 f"  {load}\n"
                 "end")
     if shell == "powershell":
-        cases = "\n".join(f'    "{p}" {{ $env:CRITIC_BASE_URL = "{u}" }}' for p, (lg, u) in PROVIDERS.items())
+        cases = "\n".join(f'    "{p}" {{ $env:CRITIC_BASE_URL = "{_shell_base(u, shell)}" }}'
+                          for p, (lg, u) in PROVIDERS.items())
         return ("function critic-env {              # usage: critic-env <provider> [model]\n"
                 "  switch ($args[0]) {\n"
                 f"{cases}\n"
@@ -195,7 +208,11 @@ def show_local(osn, shell, ram):
 def show_cloud(provider, osn, shell, rc):
     lineage, base = PROVIDERS[provider]
     print(f"CLOUD PROVIDER: {provider}  (lineage: {lineage}; a paid/keyed, different-lineage seat)")
-    print(f"  verify the base URL on the vendor's docs (these move): {base}\n")
+    print(f"  verify the base URL on the vendor's docs (these move): {base}")
+    if "{account}" in base:
+        print("  needs your account id too (dash.cloudflare.com — it's in the dashboard URL; not a secret):")
+        print("      export CLOUDFLARE_ACCOUNT_ID=<id>       # put it in your shell rc, or the skill's .env")
+    print()
     print(f"  1) store {provider}'s key under its OWN item (so several keys coexist) — never a dotfile/history:")
     print("       " + key_storage_cmd(osn, provider))
     print(f"\n  2) add this ONE function to your shell profile ({rc}) — it handles ALL your providers:\n")
@@ -248,7 +265,7 @@ def do_install(osn, shell, rc, assume_yes):
     print("\nNow store each provider's key (interactive prompt — never on the command line/history):")
     for p in ("openai", "google"):
         print("   " + key_storage_cmd(osn, p))
-    print("   …(same for deepseek | glm | mistral | ollama-cloud)")
+    print("   …(same for deepseek | glm | mistral | cloudflare | perplexity | ollama-cloud)")
     print("\nThen configure the panel:  critic-env <provider> ; python3 external_critic.py --configure")
     return 0
 

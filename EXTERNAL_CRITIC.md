@@ -14,21 +14,26 @@ Helper: `external_critic.py` (dependency-free, stdlib only; returns PRESERVE / I
 
 The model is **config-first** (`CRITIC_MODEL`); never hardcode it — the in-script default is only a fallback. Pick a lineage *different from your primary model* (that is what buys the independence), and check `ollama.com/library` for the current tag, since rankings shift monthly:
 
-- **Default / broadly runnable:** `qwen3:8b` — the in-script *floor* (a fallback only); `setup.sh` auto-picks the strongest installed model that safely fits your RAM (see the README changelog for the current benchmarked pick).
-- **Stronger general:** `qwen3:14b` / `qwen3:32b`, or a current GLM or DeepSeek tag (verify on `ollama.com/library`).
+- **Default / broadly runnable:** `qwen3:8b` — the in-script *floor* (a fallback only); `setup.sh` auto-picks the strongest installed model that safely fits your RAM.
+- **Stronger general:** `gemma4:12b` (probed **2/2** here — the current best local pick), `qwen3:14b` / `qwen3:32b`, or a current GLM tag (verify on `ollama.com/library`).
 - **Code review:** a Qwen3-Coder or DeepSeek-Coder tag.
+- **Retired (2026-07):** `gpt-oss:20b` and `deepseek-r1:14b` — reachable but **null on real artifacts** (they summarized instead of critiquing; that failure is exactly what the capability section below detects).
 
 **Cloud (with an API key): pick by lineage, not by leaderboard.** The point is independence *from your primary model*, so reach by vendor family — each a different lineage from Claude — and confirm the current tag on the vendor's own model page. A hardcoded "best N" list rots within weeks, so the durable guidance is the families, not the tags:
 
 | API / vendor | Lineage (≠ Claude) | Endpoint base |
 |---|---|---|
-| Google AI Studio | Gemini | `…/v1beta/openai` (OpenAI-compat) |
+| Google AI Studio | Gemini (+ Gemma) | `…/v1beta/openai` (OpenAI-compat) |
 | OpenAI | GPT | `…/v1` |
 | DeepSeek | DeepSeek | OpenAI-compat; cheap, strong code lineage |
 | Z.ai | GLM | `…/api/paas/v4` |
 | Mistral | Mistral | OpenAI-compat; EU-hosted |
+| Cloudflare Workers AI | *many* — GLM, Kimi, DeepSeek, Qwen, Gemma | `…/accounts/<id>/ai/v1` (OpenAI-compat; **free daily allocation**, then paid; needs `CLOUDFLARE_ACCOUNT_ID`) |
+| Perplexity | Sonar | `https://api.perplexity.ai` (OpenAI-compat) |
 
-*Current picks (as of 2026-06 — perishable, verify before trusting): `gemini-3.1-pro-preview`, a current `gpt-…`, a `deepseek-…` tag, `glm-5.2`. Refresh this one line by hand; the table above is the part that lasts.*
+Cloudflare and Perplexity serve **no `GET /models`**, so `--discover`/`--configure` fall back to a small hand-refreshed candidate list in `critic_providers.py` (`STATIC_MODELS`) — refresh it when the vendors rotate models. Cloudflare is notable as **one key that serves many distinct lineages** (the panel infers each seat's lineage from the model id, so a Cloudflare GLM and a Cloudflare Kimi count as two families).
+
+*Current picks (as of 2026-07 — perishable, verify before trusting): `gemini-3.5-flash`; via Cloudflare `@cf/zai-org/glm-5.2`, `@cf/moonshotai/kimi-k2.7-code` (code), `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b`; `sonar-pro`. Refresh this one line by hand; the table above is the part that lasts.*
 
 "Auto-update to the newest best model" can't be fully automated — *best* is a human judgment that changes monthly, and there's no clean registry query for it. The achievable design is config-first + a small **ranked preference list** (best first) the setup tries in order — reusing the strongest model you already have, else pulling a light default — refreshed by hand. And for reproducible work (scientific or code), **pin and log** the critic model used for a given review rather than silently auto-bumping mid-run — auto-update to stay current; pin+log (model, seed, params) so a review is auditable and reproducible on the same build (tags are mutable — re-pin after a re-pull). This is the same logged-trace discipline the Temporal axis and the assumptions ledger already use: record which critic produced the critique.
 
@@ -60,7 +65,7 @@ python3 external_critic.py draft.md --panel        # RUN the remembered panel (e
 ```bash
 python3 critic_setup.py                      # local Ollama (free) — picks a model for your RAM
 python3 critic_setup.py --provider list      # the cloud providers (each a different lineage)
-python3 critic_setup.py --provider openai    #   or  google | deepseek | glm | mistral | ollama-cloud
+python3 critic_setup.py --provider openai    #   or  google | deepseek | glm | mistral | cloudflare | perplexity | ollama-cloud
 
 # certify a seat really critiques, discover what a cloud key can serve, then build the panel:
 python3 external_critic.py --probe                          # SCORE this seat (0..N); PASS = >=1
@@ -88,44 +93,34 @@ fi
 
 This is a *consumer* concern: **the skill itself registers no hooks.** A project `./.critic/` panel overrides the global one (no merge), so per-project critics stay isolated.
 
-## Cloud routing — and keeping the key out of your shell history
+## Cloud routing — where the keys live
 
-The skill is **not tied to any one vendor** — it's about *your* key. Cloud mode is fully env-driven: set `CRITIC_BASE_URL` (+ `CRITIC_API_KEY` for keyed endpoints) for *whichever* provider you have — OpenAI, Google, DeepSeek, GLM, Mistral, or **Ollama Cloud** (see the lineage map above). `critic_setup.py --provider <name>` prints the right block for your shell; this is the generic form. The trap is the **key**: an inline `export CRITIC_API_KEY=sk-…` lands in your shell history, and `.env` lands it on disk. Store it once in your OS secret store and load it *only for the run*:
+The skill is **not tied to any one vendor** — it's about *your* key. Store each provider's key **once**, under its own item, and the helper **finds it by itself** — `--configure`, `--panel`, and any run whose `CRITIC_BASE_URL` matches a known provider read the store directly (read-only; the key is never printed and never lands in a dotfile or your history). One provider key can serve several lineages (the google key serves Gemini *and* Gemma), so items are named **by provider**, `critic-api-key-<provider>`:
 
 ```bash
-# store EACH provider's key once (prompts; nothing on a dotfile or in history) — a PER-PROVIDER item
-# named  critic-api-key-<PROVIDER>  (PROVIDER = the arg to critic-env / --provider: google, openai, …),
-# NOT by lineage: one provider key serves several lineages (the google key serves gemini AND gemma).
-# So OpenAI + Google + … coexist (`critic_setup.py --provider <x>` prints the exact command):
-#   macOS:  security add-generic-password -s critic-api-key-google -a "$USER" -w
-#   Linux:  secret-tool store --label=critic-api-key-google service critic-api-key-google   # or use `pass`
-#   Windows: [Environment]::SetEnvironmentVariable("CRITIC_API_KEY_GOOGLE",(Read-Host "key"),"User")  # PowerShell;
-#            Read-Host prompts -> no history. NOT cmdkey (Credential Manager isn't read by the flow), not bare setx.
+# store EACH provider's key once (each command PROMPTS — the key never touches your history):
+#   macOS:   security add-generic-password -s critic-api-key-google -a "$USER" -w
+#   Linux:   secret-tool store --label=critic-api-key-google service critic-api-key-google
+#   Windows: [Environment]::SetEnvironmentVariable("CRITIC_API_KEY_GOOGLE",(Read-Host "key"),"User")
 
-# ONE function (in your shell rc) for ALL your providers — each key in its OWN item, so
-# OpenAI + Google + … coexist. `critic_setup.py --provider <x>` prints this for your shell:
-critic-env() {                                  # usage: critic-env <provider> [model]
-  case "$1" in
-    openai)   export CRITIC_BASE_URL="https://api.openai.com/v1" ;;
-    google)   export CRITIC_BASE_URL="https://generativelanguage.googleapis.com/v1beta/openai" ;;
-    deepseek) export CRITIC_BASE_URL="https://api.deepseek.com/v1" ;;
-    # …glm | mistral | ollama-cloud — see the lineage map above
-    *) echo "usage: critic-env <provider> [model]" >&2; return 1 ;;
-  esac
-  export CRITIC_MODEL="${2:-}"                                          # empty -> --discover picks the latest
-  export CRITIC_API_KEY="$(security find-generic-password -s critic-api-key-$1 -w 2>/dev/null)"   # per-provider item
-  #   Linux: CRITIC_API_KEY="$(secret-tool lookup service critic-api-key-$1)"
-  [ -n "$CRITIC_API_KEY" ] && echo "critic-env: $1 ready" || echo "WARN: no key stored for $1" >&2
-}
+# Cloudflare additionally needs your account id (in the dashboard URL; NOT a secret):
+#   export CLOUDFLARE_ACCOUNT_ID=<id>          # shell rc, or a line in the skill's .env
 
-critic-env google                                                  # load THIS provider (store its key first, above)
-python3 external_critic.py --discover                              # which models can this key serve? (newest-first)
-python3 external_critic.py --probe                                 # certify the one you pick
-python3 external_critic.py draft.md --mode correctness             # run a review (--depth full for rationale)
+python3 external_critic.py --configure        # sees every provider with a stored key
+python3 external_critic.py draft.md --panel   # each seat loads its own key; paid seats ask first
 ```
 
-**Two keys (e.g. OpenAI + Google)? Both are recognized.** Store each under its own item (`critic-api-key-openai`, `critic-api-key-google`), then `critic-env openai` → `--probe` a model, `critic-env google` → `--probe` a model. The registry keeps every capable seat across providers, and `--configure` builds **one panel spanning all your distinct lineages** — that diversity *is* the decorrelation the panel is for.
+**Per-OS resolution** (`critic_setup.py --provider <x>` prints the exact commands for your machine):
 
-Don't hard-code a model — `--discover` lists what the key serves, newest-first, so a new release auto-surfaces and you choose by score and free/paid. The key lives only in the secret store and in this one shell's env — never in a file or your history. The helper omits request fields strict OpenAI-compat shims reject (e.g. `seed`) and surfaces the endpoint's own error text if a request is refused.
+- **macOS** — the Keychain, read via `security find-generic-password` (you may get a one-time "allow" prompt per item).
+- **Linux** — libsecret (GNOME Keyring / KWallet), read via `secret-tool lookup`; install `libsecret-tools` if missing. Headless boxes without a keyring: fall back to env vars.
+- **Windows** — a per-provider **user environment variable** `CRITIC_API_KEY_<PROVIDER>` (set via `Read-Host` above so it never enters PSReadLine history). Python's stdlib can't read Credential Manager, and this helper stays dependency-free — so on Windows the env var *is* the store.
+- **Everywhere** — an explicit `CRITIC_API_KEY` (env or `.env`) always wins over the store; keyless local endpoints need nothing.
+
+The optional **`critic-env <provider> [model]`** shell function (installed by `critic_setup.py --install`, printed by `--provider <x>`) is now just a *convenience* for one-off single-seat runs: it flips `CRITIC_BASE_URL`/`CRITIC_MODEL` per provider in one word. The panel never needs it.
+
+**Several keys coexist** — one item each. The registry keeps every capable seat across providers, and `--configure` builds **one panel spanning all your distinct lineages** — that diversity *is* the decorrelation the panel is for.
+
+Don't hard-code a model — `--discover` lists what the key serves, newest-first, so a new release auto-surfaces and you choose by score and free/paid (providers without a `/models` endpoint fall back to `STATIC_MODELS`). The helper omits request fields strict OpenAI-compat shims reject (e.g. `seed`) and surfaces the endpoint's own error text if a request is refused.
 
 For a **published skill**, automate *detection and guidance*, not silent installation: when the user turns the reviewer on, run the preflight; if Ollama isn't ready, report the one command (`./setup.sh`) and the approximate download size, and leave installing/pulling to explicit consent. Never silently install software or pull multi-GB models on a user's machine.

@@ -5,7 +5,7 @@
 [![Claude skill](https://img.shields.io/badge/Claude-skill-d97757)](SKILL.md)
 [![External critic: Ollama or cloud](https://img.shields.io/badge/external%20critic-Ollama%20%7C%20cloud-555)](EXTERNAL_CRITIC.md)
 
-A review protocol that replaces the lone "critic persona." The lone critic only hunts for flaws, misses what you actually wanted, and breaks things that were already fine. This fixes that. It runs a **balanced, intent-anchored** review in two modes — *awake* (converge) and *asleep* (diverge) — sizes itself to the task, doing nothing for trivial work, and can pull in a **genuinely external viewpoint** (a different model, on demand) for real independence.
+A review protocol that replaces the lone "critic persona." A lone critic only hunts for flaws: it invents problems, misses what you actually wanted, and breaks things that were already fine. This protocol runs a **balanced, intent-anchored** review instead — in two modes, *awake* (converge) and *asleep* (diverge) — sizes itself to the task (trivial work gets no ceremony), and can add a **genuinely external viewpoint**: a different model family, local or cloud, so the second opinion isn't just you again.
 
 The lone critic fails in several overlapping ways; the framework answers them **many-to-many** — one failure can need several stages, and one stage can answer several failures:
 
@@ -21,11 +21,38 @@ The lone critic fails in several overlapping ways; the framework answers them **
 
 - **Trivial, reversible edit?** Skip everything — the protocol declines itself.
 - **Shipping real work (code, writing, a design, a plan)?** Paste the six [Quick-preset](SKILL.md#quick-preset-paste) questions and stop.
-- **Want a second opinion that isn't just you again?** Turn on the [external reviewer](#optional-external-reviewer-real-independence) — a different-lineage model joins the panel.
+- **Want a second opinion that isn't just you again?** [Install](#install) the external critic — a different-lineage model joins the panel.
 
 **What it changes — one example.** *"Review my retry helper before I merge."*
 - *Lone critic:* "No jitter, magic number `5`, use exponential backoff — rewrote it for you." Invents a requirement, rewrites working code, never asks the goal.
 - *Spatiotemporal:* keeps the capped-retry + logging that handle the real failure mode; steelmans the fixed `5` for a fail-fast CLI; asks "bounded latency, not max reliability — confirm?"; flags the one real bug (unbounded sleep on the final attempt); verdict — one fix, ship the rest.
+
+---
+
+## Install
+
+The protocol itself is a *procedure* — nothing to install; paste the presets from [SKILL.md](SKILL.md). The optional **external critic** is a small stdlib-only Python helper:
+
+```bash
+git clone https://github.com/matteolopreti/spatiotemporal-critique
+cd spatiotemporal-critique
+
+# 1 · a local reviewer — free, private (needs https://ollama.com installed):
+./setup.sh                                # picks a model that fits your RAM; asks before pulling
+
+# 2 · certify the seat actually critiques (availability ≠ capability):
+python3 external_critic.py --probe        # scored 0..2 on planted flaws; PASS = ≥1
+
+# 3 · pick and remember your panel (1–3 seats across model families):
+python3 external_critic.py --configure    # Enter accepts the suggested free-first panel
+
+# 4 · review real work:
+python3 external_critic.py draft.md --panel
+```
+
+- **Windows, or no bash:** `python3 critic_setup.py` prints the same setup tailored to your OS and shell (macOS / Linux / Windows; zsh / bash / fish / PowerShell).
+- **Cloud seats** (Gemini, GLM, Cloudflare Workers AI, Perplexity, …): store one key per provider — see [API keys](#api-keys). Paid seats always ask before spending.
+- No dependencies, ever: `external_critic.py` is Python stdlib only.
 
 ---
 
@@ -56,7 +83,7 @@ The lone critic fails in several overlapping ways; the framework answers them **
   ─▶ BETTER WORK      ·      scale threads through · blast-radius ≈ time-scale
 ```
 
-*Read top to bottom. Every step above is explained in full below* — the [four mandates](#four-mandates-always-on), [Configure to the task](#configure-to-the-task-run-first) (with the floor gate), the Awake stages (**Origin · Spatial · Temporal**), the Sleep stages (**Consolidate · Perturb**) and the [loop structure](#loop-structure), and [Scale](#scale-threads-through-everything). The optional [external reviewer](#optional-external-reviewer-real-independence) is the strongest rung of Spatial's independence ladder.
+*Read top to bottom. Every step above is explained in full below* — the [four mandates](#four-mandates-always-on), [Configure to the task](#configure-to-the-task-run-first) (with the floor gate), the Awake stages (**Origin · Spatial · Temporal**), the Sleep stages (**Consolidate · Perturb**) and the [loop structure](#loop-structure), and [Scale](#scale-threads-through-everything). The optional [external critic](#external-critic--probe-pick-run) is the strongest rung of Spatial's independence ladder.
 
 ---
 
@@ -109,7 +136,7 @@ A perfectly critiqued, regression-free artifact built toward a misread intent is
 
 ### ② Spatial — coverage at an instant (map-reduce)
 
-- **Map:** diverse critics run *independently* on the original, **each a single contribution** — its raw output is one viewpoint, not a balanced verdict, so balancing them is the panel's job, not the critic's. Independence has a quality ladder by **critic source**: same-context personas (degraded — they anchor on each other) < separate calls to the same model (better) < **a different model** — the **external reviewer**, run via `external_critic.py` (strongest — uncorrelated errors, an out-of-distribution check). Mix stance — domain-specific and generalist. Add a critic only when it buys a distinct failure surface: **coverage comes from diversity of stance, not headcount** (no fixed number).
+- **Map:** diverse critics run *independently* on the original, **each a single contribution** — its raw output is one viewpoint, not a balanced verdict, so balancing them is the panel's job, not the critic's. Independence has a quality ladder by **critic source**: same-context personas (degraded — they anchor on each other) < separate calls to the same model (better) < **a different model** — the **external critic**, run via `external_critic.py` (strongest — uncorrelated errors, an out-of-distribution check). Mix stance — domain-specific and generalist. Add a critic only when it buys a distinct failure surface: **coverage comes from diversity of stance, not headcount** (no fixed number).
 - **Reduce — a separate, fresh-context synthesis pass.** Run synthesis in a *fresh context* that consumes the critiques as external inputs — not the context that produced them — so the synthesizer can't anchor on its own map (the one thing a "council" genuinely adds). Here the *synthesis-layer* mandates do their work (preserve-first, steelman): dedupe, rank by leverage (severity×confidence *and* blast radius), surface genuine disagreement as *contested* rather than auto-resolving, emit the preserve-list. With the external reviewer on, **cross-model agreement is strong corroboration and cross-model disagreement is a first-class contested point** — but the external critique is *input, not authority* (mandate 3 governs it).
 
 ### ③ Temporal — trajectory integrity across time
@@ -151,9 +178,37 @@ Match the review to the decision's scale: small calls get **local, frequent, che
 
 ---
 
-## Optional: external reviewer (real independence)
+## External critic — probe, pick, run
 
-One model in one session only *approximates* independence (same weights, correlated errors); for a genuinely uncorrelated view, route the artifact to a **different-lineage** model — local via [Ollama](https://ollama.com) or a cloud OpenAI-compatible endpoint — with the bundled `external_critic.py`, weighting it by *independence, not authority* (mandate 3 governs: reject it where it's wrong). It can also *surface* intent-level doubt for you to adjudicate, but cannot settle your goal. Full setup, model selection, the spec-aware picker, pin-and-log, and cloud routing live in **[EXTERNAL_CRITIC.md](EXTERNAL_CRITIC.md)**.
+One model in one session only *approximates* independence (same weights, correlated errors). For a genuinely uncorrelated view, route the artifact to a **different-lineage** model with the bundled, stdlib-only `external_critic.py`. Four commands cover the whole life cycle:
+
+| Command | What it does |
+| --- | --- |
+| `--probe` | **Certify the seat.** Availability ≠ capability: a reachable model can still be a *null* seat that summarizes instead of critiquing. The probe plants known flaws and scores how many the seat *names* (deterministic grader, no LLM). Results accumulate in a per-machine registry. |
+| `--discover` | **List what a key can serve**, newest-first, with cost tier + probe score — so you never hard-code a model that rots. |
+| `--configure` | **Pick + remember a panel** of 1–3 capable seats across *distinct* model families (independence = diversity). Enter/`--auto` accepts a score-ranked, free-first suggestion; the choice persists in `critic_panel.json` and new models get flagged on re-runs. |
+| `<file> --panel` | **Run the remembered panel.** Every seat critiques the file; each view prints as a *contested* input for your synthesis. Paid seats ask before spending (`--yes` to allow); one dead seat never sinks the panel; every run is pin-logged (model + params) for reproducibility. |
+
+Weight the output by **independence, not authority**: agreement across lineages is strong corroboration; a lone claim is a contested point to surface, not a verdict (mandate 3 governs — reject it where it's wrong). It may *surface* intent-level doubt for you to adjudicate, but cannot settle your goal. Full detail — model selection, the capability probe, the registry, cloud routing — lives in **[EXTERNAL_CRITIC.md](EXTERNAL_CRITIC.md)**.
+
+## API keys
+
+Local Ollama needs **no key**. Cloud seats need one key **per provider**, stored once in your OS secret store under the item `critic-api-key-<provider>` — the helper then finds it by itself (read-only, never printed, never in a dotfile or shell history):
+
+```bash
+# each command PROMPTS for the key — nothing lands in your history:
+macOS:    security add-generic-password -s critic-api-key-google -a "$USER" -w
+Linux:    secret-tool store --label=critic-api-key-google service critic-api-key-google
+Windows:  [Environment]::SetEnvironmentVariable("CRITIC_API_KEY_GOOGLE",(Read-Host "key"),"User")
+```
+
+Supported providers (each a different lineage from Claude): `openai` · `google` · `deepseek` · `glm` · `mistral` · `cloudflare` · `perplexity` · `ollama-cloud`. Notes:
+
+- **Cloudflare Workers AI** is the budget pick: one key serves **many lineages** (GLM, Kimi, DeepSeek, Qwen, Gemma) with a **free daily allocation**. It also needs your account id (not a secret): `export CLOUDFLARE_ACCOUNT_ID=<id>` — it's in your dashboard URL. Create the token at dash.cloudflare.com → Workers AI → REST API.
+- **Windows / Linux:** macOS uses the Keychain; Linux uses libsecret (`secret-tool`); Windows uses per-provider user env vars (Python's stdlib can't read Credential Manager, and the helper stays dependency-free).
+- An explicit `CRITIC_API_KEY` in the environment always wins; paid seats are **always spend-gated** — `--panel` asks before each paid call.
+
+`python3 critic_setup.py --provider <name>` prints all of this tailored to your OS and shell. Depth (per-OS details, the optional `critic-env` convenience function, static model lists): [EXTERNAL_CRITIC.md](EXTERNAL_CRITIC.md).
 
 ---
 
@@ -161,19 +216,19 @@ One model in one session only *approximates* independence (same weights, correla
 
 **Self-gated.** From v4.0 on, every version bump must first pass this protocol run on its own spec (preserve-list · three highest-leverage issues · net-improvement gate). **Extension/refactor releases** must also be net lines-removed ≥ lines-added — the standing defense against bloat-on-extension. **Bugfix and explicitly-scoped feature releases are exempt from the line-count test** (a fix or a requested capability can't always shrink the tree), but must still justify every added line and consolidate any prose they touch.
 
-- **v1** — four mandates + tiers + temporal passes. Backward pass caught a regression (fixing "too heavy" by adding scaffolding made it heavier).
-- **v2** — added Origin and Sleep. The *same* regression recurred; consolidation named bloat-on-extension a **standing** property, making the prune pass permanent.
-- **v3** — evaluated on five adversarial tasks; refactored the stakes-tiers into *configure-to-the-task* (tiers became presets); anchoring moved to best-corroborated-intent with an evolution/drift distinction.
-- **v3.1** — made **scale** first-class (re-readings, not new machinery): outer-loop stop stated; perturbation given its near end; review cadence matched to blast-radius. Schematic + walkthrough added.
-- **v3.2** — documented the **optional external reviewer** (Ollama) as the realization of the standing independence caveat: folded into Configure (opt-in dial) and Spatial (critic-source ladder; cross-model agreement/disagreement as synthesis signal), with `external_critic.py`, `setup.sh`, and guidance for safe auto-configuration. No core architecture change — stable.
-- **v3.3** — model guidance brought current: default bumped off the older qwen2.5 generation to `qwen3:8b`, current candidates listed (Qwen3.x / GLM-4.7 / DeepSeek V3.2; a code-specialized tag for code), and the **config-first / ranked-list / pin-and-log-for-reproducibility** policy stated (auto-update can't be fully automated; pin+log keeps a review auditable). Documentation and defaults set here; the ranked-list / installed-first selection and per-run pin+log are now implemented in `setup.sh` / `external_critic.py` (config-first, with `.env` carrying setup's pick to the helper).
-- **v3.4** — the external reviewer can now route to a **hosted OpenAI-compatible endpoint** (`CRITIC_BASE_URL` + `CRITIC_API_KEY`; default stays local Ollama, fully env-driven so it never persists off-machine routing), and `setup.sh` gained **spec-aware selection**: it reads RAM and auto-picks the strongest model that *safely* fits (skipping ones that would spill to CPU). A local benchmark (planted-bug code review) set the recommended default for a ~24 GB machine to **`gpt-oss:20b`** (4/5 bugs, fully GPU-resident, no hallucinations); cloud (e.g. GLM-5.2) stays the escalation for the subtlest cases. Stdlib-only and config-first preserved; no core architecture change.
-- **v4.0** — first **self-gated** release (the protocol reviewed its own upgrade). Honesty + de-bloat + adoption pass: replaced the one-to-one failures↔fixes bijection with an honest **many-to-many lattice**; clarified that any reviewer — the external critic included — may *surface* intent-level doubt for the user to adjudicate, never a unilateral override or silent confirm; named the **fresh-context synthesis** pass and the external-reviewer seat; clarified that the four mandates bind at the **synthesis/reviser layers** (each critic is one source's view); split the external-reviewer setup into **EXTERNAL_CRITIC.md** and cut the ASCII schematic; added a five-minute start, a searchable heading, a dials decision-table and a **Standard preset**. Net lines removed ≥ added. *Deferred to v4.1: a confidence-term audit and an explicit abstention channel for critics.*
-- **v4.1** — external-critic hardening (self-gated; the first **bugfix/feature** release). Fixed a **cloud-path bug**: the OpenAI-compatible route sent `seed`, which strict shims (e.g. Gemini's) reject with a 400 — the cloud critic was unusable on those endpoints; it now sends only universally-supported fields and surfaces the endpoint's own error text. Added **`--depth brief|full`** (terse default unchanged; `full` adds a rationale per finding, mirroring Quick/Standard sizing), **safe key handling** (load the API key from an OS secret store, never an inline `export`), and a **cloud lineage map** (pick a critic by vendor family, not a rotting leaderboard). **Refined the self-gate** so the net-negative line test binds on extension/refactor releases but exempts bugfix/feature ones (a fix can't always shrink the tree). Stdlib-only and config-first preserved. *Still deferred: the confidence-term audit and explicit abstention channel.*
-- **v4.2** — external-critic **capability detection** (self-gated; a scoped **feature** release). *Availability ≠ capability:* a reachable seat can still be a **null** one — it summarizes or regenerates the artifact instead of finding its flaw (*independence-theater*). Applies the framework's own **planted-defect** discipline to the critic seat itself: **`--probe`** feeds the seat a tiny artifact with one known contradiction and grades the *answer* (a `<think>…</think>` block is stripped) with a **deterministic, non-LLM** string check — a different substrate, so it may *exclude* a null seat — PASS / FAIL / UNAVAILABLE. Adds a **`critic_registry.tsv`** capability log (newest record per model wins; a PASS over ~30 days is flagged stale) and **`--select`**, a *free+capable → paid+capable (confirm the spend) → same-lineage-flagged "independence degraded"* ladder; a **faithful `--probe FILE --expect "…"`** rung plants a flaw in a slice of your real artifact for the scale/abstraction-induced nulling a tiny probe misses; and a non-blocking **advisory** on a normal run when the seat has no capability-PASS on record. A PASS certifies the **read**, never authority over the **goal** — that residual stays the owner's. Externally reviewed (Gemini caught three grader-brittleness flaws, all fixed). Stdlib-only and config-first preserved.
-- **v4.2.1** — fix (self-gated; a **bugfix** release). The **faithful `--probe FILE --expect`** parse lower-cased *and* space-stripped its tokens while `grade_probe` matches a **space-preserved** answer, so a **multi-word** expected finding (e.g. `"race condition"`) silently never matched — false-failing a capable seat (the same false-fail class v4.2's external review caught, surviving in this one path). Now it lower-cases but **preserves spaces**, mirroring the grader. Single-word `--expect` and the floor probe are unaffected.
-- **v4.3** — capability **score + panel** (self-gated; a scoped **feature** release). The floor `--probe` is now **quantitative**: a two-flaw artifact (a contradiction + an impossible number) returns a **capability SCORE = how many flaws the seat NAMES** (0–N), so seats can be *ranked*, not just gated (PASS = score ≥ 1). The grader moved from per-flaw wordlists — which false-missed capable seats whose diagnosis vocabulary was open-ended ("negative memory footprint", "unrealistic") — to **subject-anchor + fault-word co-occurrence within a sentence or an adjacent pair**: tolerant of how a critique is phrased, yet a restating summary scores 0. `--select` becomes a **PANEL** of up to **3 capable seats across DISTINCT lineages** (independence = diversity; best-scoring per lineage, free-first), with paid seats flagged *"confirm the spend"* and never auto-used. Externally reviewed (Gemini caught an adjacent-sentence false-fail and a generic-word false-pass; both fixed). Stdlib-only and config-first preserved.
-- **v4.4** — vendor-neutral setup + **model discovery** (self-gated; a scoped **feature** release). Stop hard-coding a model or a vendor. New **`critic_setup.py`** — cross-platform (macOS / Linux / Windows; zsh / bash / fish / PowerShell) **guided** setup: it detects your OS, shell, and RAM and prints a tailored, copy-pasteable path — the best local Ollama model for your RAM, *or* safe OS-secret-store key storage + a `critic-env` snippet for *your* shell. Detection + guidance only: it stores nothing, installs nothing, and pulls nothing on its own. New **`--discover`** lists the models a given key can serve (OpenAI-compat `/models`, or local Ollama), drops non-chat ids, **sorts newest-first** so a new release auto-surfaces, and annotates each with **free|paid tier + capability score** — you pick by score (no invented prices; no model API exposes them). Docs decoupled from any one vendor: a generic `critic-api-key` item, a `<provider-base-url>` placeholder, and Ollama-local/cloud · OpenAI · Google · DeepSeek · GLM · Mistral listed as equals. Externally reviewed (Gemini caught a non-native Windows credential cmdlet, a Windows key-history risk, two over-broad discovery filters, and a version-sort gap for unversioned ids — all fixed). Stdlib-only and config-first preserved.
-- **v4.5** — **multi-provider keys** (self-gated; a scoped **feature** release). The guided setup now holds *several keys at once*: store each under its own item (`critic-api-key-<provider>`) and add ONE parameterized **`critic-env <provider>`** (a `case`/`switch` over the provider→base-URL map) that loads the right key per provider. So OpenAI + Google (etc.) **coexist** — `critic-env openai` → `--probe` a model, `critic-env google` → `--probe` a model, and `--select` builds **one panel spanning all your distinct lineages** (both keys recognized). The registry/panel were always multi-lineage; v4.5 makes the *key setup* multi-provider instead of a single shared item. Verified in a real shell: the generated `critic-env` flips base URLs per provider and errors on an unknown one. Stdlib-only and config-first preserved.
-- **v4.6** — **guided configuration: pick + remember a panel** (self-gated; a scoped **feature** release). Closes the onboarding loop. New **`external_critic.py --configure`**: checks every configured provider (a free `/models` call per stored key — never an auto-probe of a paid endpoint), prints a **grouped-by-lineage** table, you **pick 1–3 across lineages**, and it **remembers** the choice in `critic_panel.json` (the single source of truth `--select` then reads; the registry only supplies scores). Re-run to **keep or update**, and it **flags models new since your last check** (a run-time date-compare, ≥7 days — no daemon); a non-blocking "panel is N days old" advisory also rides the normal critique path. New **`critic_setup.py --install`**: consent-gated, idempotent append of `critic-env` to your rc (one upfront prompt; `--yes` for non-interactive; exits non-zero in CI if it would need a TTY). State hierarchy is strict: a project `./.critic/` overrides the global panel, no merge. The provider table moved to a shared `critic_providers.py` (one source of truth for both scripts). Procedure finalized by a **full spatiotemporal critique** (Gemini) — it caught that the draft auto-probed paid APIs and auto-wrote startup configs; both removed. Stdlib-only and config-first preserved.
-- **v4.7** — **run the panel; one panel command; de-couple from any host harness** (self-gated; a scoped **feature** release). New **`external_critic.py ARTIFACT --panel`** *runs* the remembered panel: each chosen seat critiques the artifact and every view prints as a *contested* input for synthesis — closing the loop from *pick a panel* to *run it*. Local seats use native Ollama; a cloud seat loads its provider's stored key (read-only) and is **spend-gated** (confirm · `--yes` · or skip — never an auto-spend); one dead seat can't sink the panel, and each seat is pin-logged; seats route by endpoint **shape** (a `/vN` path → OpenAI-compat), so a local OpenAI-compat server (LM Studio / vLLM on `:1234/v1`) and native/LAN Ollama both work, and a paid seat's key resolves from the OS secret store *or* the active `critic-env`. **Consolidated `--select` into `--configure`**: one command to pick a panel — or accept a **score-ranked, free-first suggestion** with Enter / `--auto` — and remember it; the redundant `--select` is removed (its auto-derive became the suggestion). De-coupled the skill from any one consumer: the same-lineage fallback no longer names a host-only agent (it points at the Standard preset's personas, with a harness's `decorrelated-reviewer` as *one example*), and the v4.6 changelog's claim of a `SessionStart` template the skill never shipped is removed — that integration now lives in EXTERNAL_CRITIC.md as an **optional** consumer example (the skill registers no hooks). The `--configure` / `--install` / `--panel` flow is documented in EXTERNAL_CRITIC.md + SKILL.md, not changelog-only. Stdlib-only and config-first preserved.
+- **v1** — four mandates + stakes tiers + temporal passes.
+- **v2** — added Origin and Sleep; named **bloat-on-extension** the standing failure mode (the prune pass became permanent).
+- **v3** — evaluated on five adversarial tasks; tiers became *configure-to-the-task* presets; anchoring moved to best-corroborated intent (evolution vs. drift).
+- **v3.1** — scale made first-class; outer-loop stop; near-perturbation; schematic + walkthrough.
+- **v3.2** — optional **external reviewer** (Ollama): `external_critic.py`, `setup.sh`, the critic-source independence ladder.
+- **v3.3** — model guidance made **config-first**: ranked candidate list, installed-first reuse, pin-and-log for reproducibility.
+- **v3.4** — **cloud routing** (`CRITIC_BASE_URL` + key, default stays local) and spec-aware local model selection by RAM.
+- **v4.0** — first **self-gated** release: honest many-to-many failure lattice; fresh-context synthesis named; setup split into EXTERNAL_CRITIC.md; five-minute start. Net lines removed.
+- **v4.1** — cloud-path bug fixed (strict shims reject `seed`); `--depth brief|full`; safe key handling; vendor lineage map.
+- **v4.2 / v4.2.1** — **capability probe** `--probe` (availability ≠ capability — a reachable seat can still be null) + per-machine registry; faithful `--probe FILE --expect`; multi-word `--expect` fix.
+- **v4.3** — the probe became a **score** (0..N flaws named) that ranks seats; panel of up to 3 across **distinct lineages**, free-first, paid confirm-gated.
+- **v4.4** — vendor-neutral guided setup (`critic_setup.py`, cross-platform) + **`--discover`**: list what a key serves, newest-first.
+- **v4.5** — **multi-provider keys**: one item per provider + a single `critic-env <provider>` switcher; one panel spans all lineages.
+- **v4.6** — **`--configure`**: pick + **remember** a panel (`critic_panel.json`); flags models new since last check; consent-gated `--install`.
+- **v4.7** — **`--panel` runs the remembered panel** (spend-gated, endpoint-shape routing, per-seat pin-log); `--select` folded into `--configure`; de-coupled from any host harness.
+- **v4.8** — **keys resolve from the OS secret store directly** (bugfix: the docs promised it, but only the optional `critic-env` shell helper delivered it — now `--panel`, `--configure`, *and* plain runs find `critic-api-key-<provider>` on their own; Windows uses per-provider env vars). New providers: **Cloudflare Workers AI** (one key, many lineages, free daily allocation; `CLOUDFLARE_ACCOUNT_ID` fills the per-account URL) and **Perplexity** — both lack `GET /models`, so discovery falls back to a hand-refreshed `STATIC_MODELS` list; multi-lineage providers now infer each seat's lineage from the model id. Lineage table gained gemma/kimi/sonar. **Retired** `gpt-oss:20b` and `deepseek-r1:14b` (reachable but null on real artifacts); `gemma4:12b` promoted (probed 2/2). README reworked: install, API keys, panel life-cycle, concise changelog.

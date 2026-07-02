@@ -45,8 +45,8 @@ Config (env / .env — a set, non-empty env var always wins):
     OLLAMA_HOST    default http://localhost:11434
     CRITIC_MODEL   default qwen3:8b  (a current, broadly-runnable, different-
                    lineage baseline; bump up for serious reviews)
-                   - general, stronger:  qwen3:14b / qwen3:32b, or a current GLM
-                     or DeepSeek tag (verify on ollama.com/library)
+                   - general, stronger:  gemma4:12b / qwen3:14b / qwen3:32b, or a
+                     current GLM or DeepSeek tag (verify on ollama.com/library)
                    - code review:         a Qwen3-Coder or DeepSeek-Coder tag
                    Pick a lineage DIFFERENT from Claude to maximize independence,
                    and verify the exact tag on ollama.com/library — these move
@@ -60,7 +60,13 @@ Config (env / .env — a set, non-empty env var always wins):
     CRITIC_BASE_URL  set → OpenAI-compatible endpoint, base incl. the version path
                    (e.g. .../v1); a hosted, different-lineage model sent off-machine.
                    Empty = local Ollama (private, default).
-    CRITIC_API_KEY   Bearer token for CRITIC_BASE_URL (keep in env, not .env).
+    CRITIC_API_KEY   Bearer token for CRITIC_BASE_URL. Resolution: env / .env first;
+                   else, when CRITIC_BASE_URL matches a known provider, the key is
+                   read from the OS secret store (item critic-api-key-<provider> —
+                   macOS Keychain / Linux secret-tool / Windows per-provider env var
+                   CRITIC_API_KEY_<PROVIDER>). Keep keys out of .env.
+    CLOUDFLARE_ACCOUNT_ID  fills Cloudflare's per-account base URL (env or .env;
+                   the account id is not a secret).
 """
 import argparse
 import datetime
@@ -74,9 +80,12 @@ import urllib.error
 import urllib.request
 
 try:
-    from critic_providers import PROVIDERS   # shared map (also used by critic_setup.py)
-except ImportError:                          # --configure needs it; probe/select/discover don't
-    PROVIDERS = {}
+    from critic_providers import PROVIDERS, STATIC_MODELS, resolve_base
+except ImportError:                          # --configure needs them; probe/discover don't
+    PROVIDERS, STATIC_MODELS = {}, {}
+
+    def resolve_base(base):
+        return base
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -99,6 +108,11 @@ def _load_dotenv(path):
 
 
 _DOTENV = _load_dotenv(os.path.join(_HERE, ".env"))
+
+# Cloudflare's base URL is per-account; .env may carry the id (it is not a secret).
+# Bridged into the environment so resolve_base sees it; a real env var wins.
+if not os.environ.get("CLOUDFLARE_ACCOUNT_ID") and _DOTENV.get("CLOUDFLARE_ACCOUNT_ID"):
+    os.environ["CLOUDFLARE_ACCOUNT_ID"] = _DOTENV["CLOUDFLARE_ACCOUNT_ID"]
 
 
 def _cfg(key, default):
@@ -278,12 +292,14 @@ def infer_lineage(model, base_url):
     """Best-effort model family from the id / endpoint. The point is: != Claude."""
     m, u = (model or "").lower(), (base_url or "").lower()
     table = [
-        ("gemini", ("gemini", "generativelanguage", "googleapis")),
+        ("gemini", ("gemini", "gemma", "generativelanguage", "googleapis")),
         ("gpt", ("gpt-", "openai.com", "o1-", "o3-", "o4-")),
         ("deepseek", ("deepseek",)),
         ("glm", ("glm", "z.ai", "zhipu", "bigmodel")),
         ("mistral", ("mistral", "mixtral", "magistral")),
         ("qwen", ("qwen",)),
+        ("kimi", ("kimi", "moonshot")),
+        ("sonar", ("sonar", "perplexity")),
         ("llama", ("llama",)),
         ("claude", ("claude", "anthropic")),
     ]
@@ -652,18 +668,31 @@ def _candidate_rows():
                    r.get("cost", "?"), str(r.get("score", "?"))]
             table.append(row); listed.add(r["model"]); catalog[r["model"]] = row
     for prov, (lineage, base) in PROVIDERS.items():
+        base = resolve_base(base)                      # None = {account} unfilled -> skip
+        if not base:
+            continue
         key = _key_for(prov, base)
         if not key:
             continue
         try:
             ids = _discover_at(base, key)              # free /models list, not a paid call
-        except Exception:  # noqa: BLE001
+        except urllib.error.HTTPError as e:
+            # ONLY a missing /models endpoint (Cloudflare 405s, Perplexity 404s) falls back to
+            # the hand-refreshed static list — an auth error (401/403) must NOT be masked as
+            # working seats that would then fail at --panel time.
+            ids = STATIC_MODELS.get(prov, []) if e.code in (404, 405) else []
+            if not ids:
+                continue
+        except Exception:  # noqa: BLE001 — unreachable / timed out: skip this provider
             continue
         ranked = sorted({i for i in ids if _suitable(i)}, key=lambda i: (_version(i), i), reverse=True)
         for n, mid in enumerate(ranked):
             name = mid.replace("models/", "")
             seen.add(name)
-            row = [lineage.lower(), name, base, "paid", "unprobed"]   # paid stays UNPROBED (consent-gated)
+            # A multi-lineage provider (Cloudflare, Ollama Cloud) serves many families:
+            # the seat's lineage comes from the model id, not the provider label.
+            lin = infer_lineage(name, "") if lineage == "(varies)" else lineage
+            row = [lin.lower(), name, base, "paid", "unprobed"]       # paid stays UNPROBED (consent-gated)
             catalog.setdefault(name, row)             # full catalog: --choose can name any servable model
             if name not in listed and n < 4:          # top-4 per provider in the BROWSE table
                 table.append(row); listed.add(name)
@@ -746,9 +775,21 @@ def do_configure(project, explicit, auto):
 def _provider_for_endpoint(endpoint):
     e = (endpoint or "").rstrip("/")
     for prov, (_lin, base) in PROVIDERS.items():
-        if base.rstrip("/") == e:
+        base = resolve_base(base)
+        if base and base.rstrip("/") == e:
             return prov
     return None
+
+
+# The single-seat cloud path keeps the docs' promise: a key stored once in the OS
+# secret store (critic-api-key-<provider>) is found WITHOUT any shell helper.
+# Env / .env CRITIC_API_KEY still wins; this only fills the gap when CRITIC_BASE_URL
+# identifies a known provider. (--panel seats already resolve keys via _key_for.)
+if BASE_URL and not API_KEY:
+    API_KEY = _provider_key(_provider_for_endpoint(BASE_URL)) or ""
+    if not API_KEY and not re.search(r"localhost|127\.0\.0\.1", BASE_URL):
+        print("(advisory: no CRITIC_API_KEY set and CRITIC_BASE_URL matches no known "
+              "provider — sending keyless; a keyed endpoint will refuse)", file=sys.stderr)
 
 
 def _seat_runtime(seat):
